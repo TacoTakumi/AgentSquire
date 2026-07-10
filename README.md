@@ -14,7 +14,9 @@ installed awiki-search -> /home/you/.claude/skills/awiki-search
 ```
 
 Supported harnesses at launch: Claude Code, pi, Hermes, and opencode. Detection
-is by marker directory; every operation is local (no network in any verb).
+is by marker directory; every operation is local (no network in any verb). Each
+harness's directories, scopes, and behaviour are recorded in
+[docs/harnesses.md](docs/harnesses.md).
 
 ## Consumer integration guide
 
