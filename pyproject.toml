@@ -19,6 +19,8 @@ dependencies = [
 [dependency-groups]
 dev = [
     "build",
+    "hatchling",
+    "pip",
     "pytest",
 ]
 
