@@ -49,20 +49,21 @@ def check_stale(
         ]
         if not stale:
             return
-        names = ", ".join(sorted({skill.name for _, skill in stale}))
+        stale_names = sorted({skill.name for _, skill in stale})
+        count, names = len(stale_names), ", ".join(stale_names)
 
         interactive = sys.stdin.isatty() and sys.stderr.isatty()
         if not interactive:
             print(
                 f"{source_package}: a new version is available for"
-                f" {len(stale)} skill(s) ({names}); run the skills update command",
+                f" {count} skill(s) ({names}); run the skills update command",
                 file=sys.stderr,
             )
             return
 
         print(
             f"{source_package}: a new version is available for"
-            f" {len(stale)} skill(s): {names}",
+            f" {count} skill(s): {names}",
             file=sys.stderr,
         )
         sys.stderr.write("Update now? [y/N] ")

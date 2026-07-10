@@ -84,7 +84,7 @@ def skills_command_group(
         else:
             backends = registry.detect(home=home, project=project)
             if not backends:
-                click.echo("no supported harnesses detected", err=True)
+                raise click.ClickException("no supported harnesses detected")
         return backends, home, project
 
     def run_on(backend, harness, invoke_verb):

@@ -150,6 +150,21 @@ class TestHarnessSelection:
         assert result.exit_code != 0
         assert "not detected" in result.output
 
+    def test_zero_detected_harnesses_is_a_clear_error(
+        self, click_consumer, tmp_path, monkeypatch
+    ):
+        home = tmp_path / "bare_home"
+        project = tmp_path / "bare_project"
+        home.mkdir()
+        project.mkdir()
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+        monkeypatch.chdir(project)
+
+        result = invoke(click_consumer, "skills", "install")
+
+        assert result.exit_code != 0
+        assert "no supported harnesses detected" in result.output
+
     def test_scope_unsupported_on_one_detected_harness_is_skipped(
         self, click_consumer, env
     ):

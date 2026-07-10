@@ -15,5 +15,7 @@ jobs:
           python-version: "3.12"
       - name: Unit tests
         run: uv run pytest
+      - name: Wheel metadata smoke test
+        run: ./scripts/clean-venv-smoke.sh
       - name: Clean-venv wheel end-to-end test
         run: ./scripts/e2e-wheel-test.sh

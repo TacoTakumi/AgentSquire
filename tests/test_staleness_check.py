@@ -185,3 +185,31 @@ class TestTty:
 
         assert "[y/N]" not in output
         assert "COMMAND OUTPUT" in output
+
+
+def test_stale_count_is_skills_not_harness_pairs(tmp_path, capsys):
+    """One stale skill visible on two detected harnesses is one skill."""
+    from agentsquire import check_stale
+    from agentsquire.harnesses import CLAUDE_CODE, HERMES
+    from agentsquire.sources import DirectorySource
+    from agentsquire.verbs import install
+
+    for sub in ("home", "project", "bundle"):
+        (tmp_path / sub).mkdir()
+    write_skill(tmp_path / "bundle", "alpha")
+    source = DirectorySource(tmp_path / "bundle")
+    roots = {"home": tmp_path / "home", "project": tmp_path / "project"}
+    for backend in (CLAUDE_CODE, HERMES):
+        install(
+            source, backend, scope="user", **roots,
+            source_package="fixture-consumer", source_version="1.2.3",
+        )
+    make_stale(tmp_path)
+
+    check_stale(
+        source, scope="user", **roots,
+        source_package="fixture-consumer", source_version="1.2.3",
+    )
+
+    err = capsys.readouterr().err
+    assert "1 skill(s)" in err, err
