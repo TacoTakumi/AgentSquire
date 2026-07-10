@@ -172,10 +172,11 @@ def test_install_lands_in_the_fixture_home(tmp_path):
     assert (home / ".claude" / "skills" / "alpha").is_dir()
 ```
 
-The verbs take the same keyword arguments directly, for example
-`install(source, backend, scope="user", home=home, project=project,
-source_package="your_pkg", source_version="1.0")`, and so do `status`,
-`update`, `uninstall`, and `check_stale`.
+The verbs accept the same `home=` and `project=` roots directly, for
+example `install(source, backend, scope="user", home=home,
+project=project, source_package="your_pkg", source_version="1.0")`;
+`status`, `update`, `uninstall`, and `check_stale` take `home=` and
+`project=` the same way.
 
 ## Building blocks
 
