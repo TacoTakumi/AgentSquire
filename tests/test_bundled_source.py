@@ -111,6 +111,43 @@ def test_bundled_source_materialize_unknown_skill_raises(installed_consumer):
             pass
 
 
+def test_installed_wheel_hot_path_makes_no_copy(installed_consumer, tmp_path, monkeypatch):
+    """REQ-09: an on-disk installed wheel serves the real package-data paths;
+    list_skills, materialize, and the status verb never create a temp copy.
+    Only zip-served or namespace-package sources materialize to a temp dir."""
+    import importlib
+
+    import agentsquire.sources as sources_module
+    from agentsquire.harnesses import CLAUDE_CODE
+    from agentsquire.verbs import status
+
+    calls = []
+    real_temporary_directory = sources_module.tempfile.TemporaryDirectory
+
+    def recording(*args, **kwargs):
+        calls.append((args, kwargs))
+        return real_temporary_directory(*args, **kwargs)
+
+    monkeypatch.setattr(sources_module.tempfile, "TemporaryDirectory", recording)
+
+    source = BundledPackageDataSource("fixture_consumer", "skills")
+    installed_pkg = Path(importlib.import_module("fixture_consumer").__file__).parent
+
+    skills = source.list_skills()
+    assert sorted(s.name for s in skills) == sorted(SKILL_NAMES)
+
+    with source.materialize("alpha-skill") as path:
+        assert path == installed_pkg / "skills" / "alpha-skill"
+
+    home, project = tmp_path / "home", tmp_path / "project"
+    (home / ".claude").mkdir(parents=True)
+    project.mkdir()
+    statuses = status(source, CLAUDE_CODE, scope="user", home=home, project=project)
+    assert sorted(s.name for s in statuses) == sorted(SKILL_NAMES)
+
+    assert calls == []
+
+
 def test_directory_source_implements_the_same_seam(tmp_path):
     for name in ("alpha-skill", "beta-skill"):
         write_skill(tmp_path, name)
