@@ -101,15 +101,14 @@ def call(source, root: Path):
 
 @pytest.fixture
 def notice_permitted(monkeypatch, capsys):
-    """Force notice-permitting conditions: suppression env unset, stderr a TTY.
+    """Force notice-permitting conditions: both suppression env vars unset.
 
-    Depends on capsys so the isatty patch lands on the captured stderr.
+    The notice is not gated on a TTY, so nothing about the stream's isatty
+    state needs forcing here; capsys's captured (non-TTY) stderr is exactly
+    the agent-harness case the notice must reach.
     """
     monkeypatch.delenv("CI", raising=False)
     monkeypatch.delenv("AGENTSQUIRE_NO_UPDATE_CHECK", raising=False)
-    # Patch the class, not the instance: pytest swaps the captured stream
-    # object between fixture setup and the test call.
-    monkeypatch.setattr(type(sys.stderr), "isatty", lambda self: True, raising=False)
     return capsys
 
 
@@ -208,7 +207,11 @@ class TestNotice:
 
 
 class TestGating:
-    """REQ-06/REQ-07 truth table: TTY stderr + presence-disables env vars."""
+    """Truth table: presence-disables env vars gate the notice; TTY does not.
+
+    The notice fires on non-TTY stderr too, so an agent harness running the
+    consumer with captured stderr still sees that an update is available.
+    """
 
     @pytest.fixture
     def stale(self, tmp_path):
@@ -216,7 +219,7 @@ class TestGating:
         make_stale(tmp_path, "awiki-search")
         return source, tmp_path
 
-    def test_tty_and_unset_env_shows_exactly_one_line(self, stale, notice_permitted):
+    def test_unset_env_shows_exactly_one_line(self, stale, notice_permitted):
         source, root = stale
 
         call(source, root)
@@ -225,7 +228,7 @@ class TestGating:
         assert captured.out == ""
         assert len(captured.err.splitlines()) == 1
 
-    def test_non_tty_stderr_is_silent(self, stale, monkeypatch, capsys):
+    def test_non_tty_stderr_still_shows_the_notice(self, stale, monkeypatch, capsys):
         source, root = stale
         monkeypatch.delenv("CI", raising=False)
         monkeypatch.delenv("AGENTSQUIRE_NO_UPDATE_CHECK", raising=False)
@@ -235,7 +238,10 @@ class TestGating:
 
         captured = capsys.readouterr()
         assert captured.out == ""
-        assert captured.err == ""
+        assert captured.err == (
+            "awiki: a skills update is available for 1 skill (awiki-search);"
+            " run `awiki skills update`\n"
+        )
 
     @pytest.mark.parametrize(
         ("var", "value"),

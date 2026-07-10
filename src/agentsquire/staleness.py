@@ -37,11 +37,12 @@ def check_stale(
     change the exit code of, the consumer command it runs inside.
     """
     try:
-        # Notice gate: interactive stderr only, and any non-empty value of
-        # CI or AGENTSQUIRE_NO_UPDATE_CHECK disables (presence-disables,
-        # the NO_COLOR convention; empty string counts as unset).
-        if not sys.stderr.isatty():
-            return
+        # Notice gate: any non-empty value of CI or AGENTSQUIRE_NO_UPDATE_CHECK
+        # disables (presence-disables, the NO_COLOR convention; empty string
+        # counts as unset). The notice is deliberately NOT gated on an
+        # interactive TTY: the primary reader is an agent harness that runs the
+        # consumer with captured (non-TTY) stderr and must still see that an
+        # update is available. CI stays the escape hatch for pipelines.
         if os.environ.get("CI") or os.environ.get("AGENTSQUIRE_NO_UPDATE_CHECK"):
             return
         home = home or Path.home()

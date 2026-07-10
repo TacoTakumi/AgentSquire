@@ -8,6 +8,18 @@ The version is declared in two places that are kept in sync by the release
 tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
 `pyproject.toml`.
 
+## [0.1.1] - 2026-07-10
+
+### Fixed
+- **`check_stale` now surfaces the update notice on non-TTY stderr.** The
+  hook previously required stderr to be an interactive TTY, which silenced
+  it in exactly the case that matters most for an agent-skills tool: an
+  agent harness runs the consumer CLI with captured (non-TTY) stderr and so
+  never saw that an update was available. The interactive-TTY gate is
+  removed; `CI` and `AGENTSQUIRE_NO_UPDATE_CHECK` (presence-disables) remain
+  the escape hatches for pipelines and opt-out. README and `docs/api.md`
+  updated accordingly.
+
 ## [0.1.0] - 2026-07-10
 
 Initial release.

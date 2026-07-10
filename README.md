@@ -116,11 +116,14 @@ def main():
     # ... the rest of your entry point
 ```
 
-The notice shows only when all three gates hold: stderr is a TTY, `CI` is
-unset or empty, and `AGENTSQUIRE_NO_UPDATE_CHECK` is unset or empty.
-Suppression is presence-disables, the `NO_COLOR` convention: any non-empty
-value disables the notice (`CI=false` and `AGENTSQUIRE_NO_UPDATE_CHECK=0`
-both suppress), while an empty string is treated as unset.
+The notice shows unless a suppression gate holds: `CI` set to a non-empty
+value, or `AGENTSQUIRE_NO_UPDATE_CHECK` set to a non-empty value. It is not
+gated on an interactive terminal - it fires on non-TTY stderr too, so an
+agent harness that runs your CLI with captured stderr still sees that an
+update is available. Suppression is presence-disables, the `NO_COLOR`
+convention: any non-empty value disables the notice (`CI=false` and
+`AGENTSQUIRE_NO_UPDATE_CHECK=0` both suppress), while an empty string is
+treated as unset.
 
 ### 4. Mark your package as skill-carrying (optional)
 

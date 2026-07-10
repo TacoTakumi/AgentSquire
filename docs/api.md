@@ -137,11 +137,14 @@ available for N skill/skills (sorted names); run `{update_command}`", and
 does nothing else: it never reads stdin, never blocks, and never updates
 anything itself - the explicit `skills update` verb is the sole updater.
 
-The notice is emitted only when all three gates hold: stderr is a TTY, `CI`
-is unset or empty, and `AGENTSQUIRE_NO_UPDATE_CHECK` is unset or empty.
-Suppression is presence-disables (the `NO_COLOR` convention): any non-empty
-value disables the notice - `CI=false` and `AGENTSQUIRE_NO_UPDATE_CHECK=0`
-both suppress - while an empty string is treated as unset.
+The notice is emitted unless a suppression gate holds: `CI` set to a
+non-empty value, or `AGENTSQUIRE_NO_UPDATE_CHECK` set to a non-empty value.
+It is not gated on an interactive TTY - it fires on non-TTY stderr too, so
+an agent harness running the consumer with captured stderr still sees that
+an update is available. Suppression is presence-disables (the `NO_COLOR`
+convention): any non-empty value disables the notice - `CI=false` and
+`AGENTSQUIRE_NO_UPDATE_CHECK=0` both suppress - while an empty string is
+treated as unset.
 
 On every path it returns None, writes nothing to stdout, never mutates
 installed skills, and leaves the exit code untouched. It swallows its own
