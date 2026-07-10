@@ -92,25 +92,35 @@ skills that only make sense inside a repository that uses your tool.
 
 ### 3. Surface updates proactively (optional)
 
-Place the one-call staleness hook at your CLI entry point. On an interactive
-terminal with stale installs it offers to update; without a TTY it writes
-nothing to stdout, never prompts, never changes your exit code, and swallows
-its own errors, so it can never break the command it runs inside:
+Place the one-call staleness hook at your CLI entry point. When installed
+skills have updates available it prints a single advisory line on stderr,
+for example:
+
+    your-cli: a skills update is available for 1 skill (alpha); run `your-cli skills update`
+
+The hook is notice-only: it never prompts, never reads stdin, and never
+updates anything itself - the explicit `skills update` verb stays the sole
+updater. It writes nothing to stdout, never changes your exit code, and
+swallows its own errors, so it can never break the command it runs inside:
 
 ```python
-from your_pkg import __version__
-
 from agentsquire import BundledPackageDataSource, check_stale
 
 
 def main():
     check_stale(
         BundledPackageDataSource("your_pkg"),
-        source_package="your_pkg",
-        source_version=__version__,
+        prog_name="your-cli",
+        update_command="your-cli skills update",
     )
     # ... the rest of your entry point
 ```
+
+The notice shows only when all three gates hold: stderr is a TTY, `CI` is
+unset or empty, and `AGENTSQUIRE_NO_UPDATE_CHECK` is unset or empty.
+Suppression is presence-disables, the `NO_COLOR` convention: any non-empty
+value disables the notice (`CI=false` and `AGENTSQUIRE_NO_UPDATE_CHECK=0`
+both suppress), while an empty string is treated as unset.
 
 ### 4. Mark your package as skill-carrying (optional)
 

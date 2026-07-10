@@ -118,18 +118,32 @@ same-named directories survive with the reason recorded per skill.
 ## Staleness check hook
 
 The one-call startup hook a consumer CLI places at its entry point to
-surface "a new version is available" proactively.
+surface "a skills update is available" proactively.
 
 `check_stale(source, backend=None, *, scope="user", home=None, project=None,
-source_package, source_version) -> None`
+prog_name, update_command) -> None`
 
 With no backend given, every detected harness is checked; `home` and
-`project` default to `Path.home()` and the current directory. On a TTY with
-update-available skills it announces them on stderr and offers to run
-update. With no TTY it never prompts or blocks, writes nothing to stdout,
-emits at most one stderr notice line, and leaves the exit code untouched.
-It returns None always and swallows its own errors - a startup hook must
-never break the command it runs inside. Local hash compares only.
+`project` default to `Path.home()` and the current directory. `prog_name`
+names the consumer CLI and `update_command` is the exact command the notice
+tells the user to run; both are required keyword arguments.
+
+The hook is notice-only and does not prompt. With update-available skills
+it prints exactly one stderr line, "{prog_name}: a skills update is
+available for N skill/skills (sorted names); run `{update_command}`", and
+does nothing else: it never reads stdin, never blocks, and never updates
+anything itself - the explicit `skills update` verb is the sole updater.
+
+The notice is emitted only when all three gates hold: stderr is a TTY, `CI`
+is unset or empty, and `AGENTSQUIRE_NO_UPDATE_CHECK` is unset or empty.
+Suppression is presence-disables (the `NO_COLOR` convention): any non-empty
+value disables the notice - `CI=false` and `AGENTSQUIRE_NO_UPDATE_CHECK=0`
+both suppress - while an empty string is treated as unset.
+
+On every path it returns None, writes nothing to stdout, never mutates
+installed skills, and leaves the exit code untouched. It swallows its own
+errors - a startup hook must never break the command it runs inside. Local
+hash compares only.
 
 ## Building blocks
 
