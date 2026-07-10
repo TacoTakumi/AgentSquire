@@ -145,6 +145,35 @@ installed skills, and leaves the exit code untouched. It swallows its own
 errors - a startup hook must never break the command it runs inside. Local
 hash compares only.
 
+## Testing your integration
+
+Every verb and the mounted skills group accept explicit roots: point
+`home=` and `project=` at fixture directories and the whole surface
+operates on them. No monkeypatching of `Path.home()` and no chdir needed:
+
+```python
+from click.testing import CliRunner
+
+from agentsquire.cli import skills_command_group
+
+
+def test_install_lands_in_the_fixture_home(tmp_path):
+    home, project = tmp_path / "home", tmp_path / "project"
+    (home / ".claude").mkdir(parents=True)  # marker so the harness is detected
+    project.mkdir()
+
+    group = skills_command_group("your_pkg", home=home, project=project)
+
+    result = CliRunner().invoke(group, ["install"])
+    assert result.exit_code == 0
+    assert (home / ".claude" / "skills" / "alpha").is_dir()
+```
+
+The verbs take the same keyword arguments directly, for example
+`install(source, backend, scope="user", home=home, project=project,
+source_package="your_pkg", source_version="1.0")`, and so do `status`,
+`update`, `uninstall`, and `check_stale`.
+
 ## Building blocks
 
 - `validate_skill_dir(path) -> list[SkillViolation]` - agentskills.io
