@@ -34,6 +34,7 @@ from agentsquire.sources import (
     SkillSource,
     SourceSkill,
 )
+from agentsquire.staleness import check_stale
 from agentsquire.stamping import StampError, read_stamp
 from agentsquire.verbs import (
     InstalledSkill,
@@ -79,6 +80,8 @@ __all__ = [
     "PI",
     "HERMES",
     "OPENCODE",
+    # staleness hook
+    "check_stale",
     # lifecycle verbs
     "install",
     "status",

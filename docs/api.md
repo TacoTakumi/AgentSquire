@@ -102,15 +102,18 @@ same-named directories survive with the reason recorded per skill.
 ## Staleness check hook
 
 The one-call startup hook a consumer CLI places at its entry point to
-surface "a new version is available" proactively. Signature (implementation
-lands with the proactive-staleness task):
+surface "a new version is available" proactively.
 
-`check_stale(source, backend, *, scope, home, project, source_package,
-source_version) -> None`
+`check_stale(source, backend=None, *, scope="user", home=None, project=None,
+source_package, source_version) -> None`
 
-On a TTY with update-available skills it announces them and offers to run
+With no backend given, every detected harness is checked; `home` and
+`project` default to `Path.home()` and the current directory. On a TTY with
+update-available skills it announces them on stderr and offers to run
 update. With no TTY it never prompts or blocks, writes nothing to stdout,
 emits at most one stderr notice line, and leaves the exit code untouched.
+It returns None always and swallows its own errors - a startup hook must
+never break the command it runs inside. Local hash compares only.
 
 ## Building blocks
 
