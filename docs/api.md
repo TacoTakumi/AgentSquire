@@ -24,7 +24,10 @@ detect, install, status, update, or uninstall.
   filesystem path to the named skill directory.
 - `BundledPackageDataSource(package, resource_path="skills")` - skills
   shipped as package data inside an installed consumer wheel
-  (importlib.resources backed).
+  (importlib.resources backed). For a normally installed wheel the skills
+  are real on-disk paths and the status/enumerate hot path performs no temp
+  copy; only zip-served or namespace-package sources are materialized to a
+  temporary directory.
 - `DirectorySource(root)` - skills laid out as subdirectories of a plain
   local directory.
 - `SourceSkill` - one enumerable skill: `name`, `content_hash`.
