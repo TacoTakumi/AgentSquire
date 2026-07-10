@@ -20,6 +20,7 @@ from agentsquire.harnesses import (
     SCOPES,
     HarnessNotDetectedError,
     UnknownHarnessError,
+    UnsupportedScopeError,
     default_registry,
 )
 from agentsquire.verbs import install as install_verb
@@ -86,6 +87,18 @@ def skills_command_group(
                 click.echo("no supported harnesses detected", err=True)
         return backends, home, project
 
+    def run_on(backend, harness, invoke_verb):
+        """One verb call on one backend. A scope the backend lacks is a clean
+        error when that harness was asked for, a named skip otherwise — never
+        an aborted multi-harness run."""
+        try:
+            return invoke_verb()
+        except UnsupportedScopeError as error:
+            if harness is not None:
+                raise click.ClickException(str(error)) from error
+            click.echo(f"skipped {backend.name}: {error}", err=True)
+            return None
+
     group = click.Group(name=name, help="Manage this package's bundled agent skills.")
 
     @group.command("install")
@@ -97,10 +110,12 @@ def skills_command_group(
         backends, home, project = targets(harness)
         failed = False
         for backend in backends:
-            result = install_verb(
+            result = run_on(backend, harness, lambda: install_verb(
                 source, backend, scope=scope, home=home, project=project,
                 source_package=src_pkg, source_version=src_version,
-            )
+            ))
+            if result is None:
+                continue
             for skill in result.installed:
                 click.echo(f"installed {skill.name} -> {skill.path}")
             for skill in result.up_to_date:
@@ -120,9 +135,10 @@ def skills_command_group(
         """Show each bundled skill's state per harness."""
         backends, home, project = targets(harness)
         for backend in backends:
-            for skill in status_verb(
+            statuses = run_on(backend, harness, lambda: status_verb(
                 source, backend, scope=scope, home=home, project=project
-            ):
+            ))
+            for skill in statuses or ():
                 click.echo(f"{skill.state.value} {skill.name} ({backend.name}/{scope})")
 
     @group.command("update")
@@ -135,10 +151,12 @@ def skills_command_group(
         backends, home, project = targets(harness)
         failed = False
         for backend in backends:
-            result = update_verb(
+            result = run_on(backend, harness, lambda: update_verb(
                 source, backend, scope=scope, home=home, project=project,
                 source_package=src_pkg, source_version=src_version, force=force,
-            )
+            ))
+            if result is None:
+                continue
             for skill in result.updated:
                 click.echo(f"updated {skill.name} -> {skill.path}")
             for skill in result.up_to_date:
@@ -158,10 +176,12 @@ def skills_command_group(
         """Remove installed skills this package's stamp owns."""
         backends, home, project = targets(harness)
         for backend in backends:
-            result = uninstall_verb(
+            result = run_on(backend, harness, lambda: uninstall_verb(
                 source, backend, scope=scope, home=home, project=project,
                 source_package=src_pkg,
-            )
+            ))
+            if result is None:
+                continue
             for skill in result.removed:
                 click.echo(f"removed {skill.name} ({backend.name}/{scope})")
             for skill in result.skipped:

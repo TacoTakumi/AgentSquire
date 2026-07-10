@@ -148,6 +148,58 @@ class TestRegistryExtensibility:
             home / ".dummy" / "skills"
         )
 
+    def test_dummy_backend_runs_the_full_verb_lifecycle(self, env, tmp_path):
+        """REQ-05 acceptance: the fifth backend needs only registration to
+        participate in the full verb lifecycle - the verbs never change."""
+        from agentsquire.sources import DirectorySource
+        from agentsquire.verbs import SkillState, install, status, uninstall, update
+
+        home, project = env
+        dummy = HarnessBackend(
+            name="dummy",
+            user_skills_dir=".dummy/skills",
+            project_skills_dir=".dummy/skills",
+            user_marker_dirs=(".dummy",),
+            project_marker_dirs=(".dummy",),
+        )
+        registry = default_registry()
+        registry.register(dummy)
+        (home / ".dummy").mkdir()
+        source_root = tmp_path / "bundle"
+        skill = source_root / "alpha"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text(
+            "---\nname: alpha\ndescription: A fixture skill.\n---\nbody\n"
+        )
+        (skill / "reference.md").write_text("reference for alpha\n")
+
+        source = DirectorySource(source_root)
+        backend = registry.resolve("dummy", home=home, project=project)
+        roots = {"home": home, "project": project}
+        provenance = {"source_package": "fixture-consumer", "source_version": "1.2.3"}
+
+        def state():
+            return {
+                s.name: s.state
+                for s in status(source, backend, scope="user", **roots)
+            }["alpha"]
+
+        installed = install(source, backend, scope="user", **roots, **provenance)
+        assert [s.name for s in installed.installed] == ["alpha"]
+        assert (home / ".dummy" / "skills" / "alpha" / "SKILL.md").is_file()
+        assert state() is SkillState.UP_TO_DATE
+        (skill / "reference.md").write_text("v2\n")
+        assert state() is SkillState.UPDATE_AVAILABLE
+        updated = update(source, backend, scope="user", **roots, **provenance)
+        assert [s.name for s in updated.updated] == ["alpha"]
+        assert state() is SkillState.UP_TO_DATE
+        removed = uninstall(
+            source, backend, scope="user", **roots,
+            source_package="fixture-consumer",
+        )
+        assert [s.name for s in removed.removed] == ["alpha"]
+        assert state() is SkillState.NOT_INSTALLED
+
     def test_registration_does_not_leak_between_registries(self, env):
         registry = default_registry()
         registry.register(HarnessBackend(name="dummy", user_skills_dir=".dummy/skills"))

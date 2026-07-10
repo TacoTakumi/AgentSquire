@@ -156,3 +156,22 @@ class TestValidation:
         assert [v.skill for v in result.rejected] == ["alpha"]
         assert result.ok is False
         assert (installed / "reference.md").read_text() == "reference for alpha\n"
+
+    def test_unstampable_new_version_is_rejected_and_old_install_kept(self, env):
+        """A new version that is valid but cannot take the stamp (flow-style
+        metadata) rejects without removing or corrupting the old install."""
+        home, project, source_root = env
+        installed = install_then_bump_source(env)
+        (source_root / "alpha" / "SKILL.md").write_text(
+            "---\nname: alpha\ndescription: A fixture skill.\n"
+            "metadata: {author: x}\n---\nbody\n"
+        )
+
+        result = run(update, env)
+
+        assert result.updated == []
+        assert [v.skill for v in result.rejected] == ["alpha"]
+        assert result.ok is False
+        assert (installed / "reference.md").read_text() == "reference for alpha\n"
+        assert read_stamp((installed / "SKILL.md").read_text())  # still ours
+        assert state_of(env, "alpha") is SkillState.UPDATE_AVAILABLE

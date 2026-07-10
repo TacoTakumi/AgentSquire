@@ -150,6 +150,32 @@ class TestHarnessSelection:
         assert result.exit_code != 0
         assert "not detected" in result.output
 
+    def test_scope_unsupported_on_one_detected_harness_is_skipped(
+        self, click_consumer, env
+    ):
+        home, project = env
+        (home / ".hermes").mkdir()  # detected alongside claude-code; no project scope
+
+        result = invoke(click_consumer, "skills", "install", "--scope", "project")
+
+        assert result.exit_code == 0, result.output
+        assert (project / ".claude" / "skills" / "alpha").is_dir()
+        assert "hermes" in result.output  # named as skipped, run not aborted
+
+    def test_scope_unsupported_on_the_explicit_harness_errors_clearly(
+        self, click_consumer, env
+    ):
+        home, project = env
+        (home / ".hermes").mkdir()
+
+        result = invoke(
+            click_consumer, "skills", "install", "--harness", "hermes",
+            "--scope", "project",
+        )
+
+        assert result.exit_code != 0
+        assert "no project-scope skills directory" in result.output
+
 
 class TestFailures:
     def test_invalid_bundled_skill_exits_nonzero_and_valid_still_installs(

@@ -239,3 +239,21 @@ class TestValidation:
 
         assert result.ok is True
         assert result.rejected == []
+
+    def test_unstampable_skill_is_rejected_with_no_partial_install(self, env):
+        """A valid skill whose frontmatter cannot take the stamp (flow-style
+        metadata) rejects cleanly: nothing lands on disk and the run goes on."""
+        home, project, source_root = env
+        flow = source_root / "aaa-flowmeta"  # sorts before alpha: run continues
+        flow.mkdir()
+        (flow / "SKILL.md").write_text(
+            "---\nname: aaa-flowmeta\ndescription: d\nmetadata: {author: x}\n---\nbody\n"
+        )
+        write_skill(source_root, "alpha")
+
+        result = do_install(env)
+
+        assert [s.name for s in result.installed] == ["alpha"]
+        assert [v.skill for v in result.rejected] == ["aaa-flowmeta"]
+        assert result.ok is False
+        assert not (home / ".claude" / "skills" / "aaa-flowmeta").exists()

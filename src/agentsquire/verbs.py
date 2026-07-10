@@ -20,7 +20,7 @@ from agentsquire.harnesses import HarnessBackend
 from agentsquire.hashing import skill_content_hash
 from agentsquire.skills import SkillViolation, validate_skill_dir
 from agentsquire.sources import SkillSource, SourceSkill
-from agentsquire.stamping import read_stamp, stamped_skill_md
+from agentsquire.stamping import StampError, read_stamp, stamped_skill_md
 
 
 class SkillState(enum.Enum):
@@ -149,9 +149,12 @@ def install(
                     SkippedSkill(name=entry.name, reason=state.value)
                 )
                 continue
-            result.installed.append(
-                _copy_and_stamp(skill_dir, target, source_package, source_version)
-            )
+            try:
+                result.installed.append(
+                    _copy_and_stamp(skill_dir, target, source_package, source_version)
+                )
+            except StampError as error:
+                result.rejected.append(_stamp_violation(entry.name, error))
     return result
 
 
@@ -159,8 +162,6 @@ def _copy_and_stamp(
     skill_dir: Path, target: Path, source_package: str, source_version: str
 ) -> InstalledSkill:
     content_hash = skill_content_hash(skill_dir)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(skill_dir, target, symlinks=False)
     stamp = {
         "installer": "agentsquire",
         "installer_version": agentsquire.__version__,
@@ -168,9 +169,19 @@ def _copy_and_stamp(
         "source_version": source_version,
         "content_hash": content_hash,
     }
-    manifest = target / "SKILL.md"
-    manifest.write_text(stamped_skill_md(manifest.read_text(), stamp))
+    # Stamp before touching the target: an unstampable manifest raises here,
+    # leaving neither a partial copy nor (on update) a removed old install.
+    stamped = stamped_skill_md((skill_dir / "SKILL.md").read_text(), stamp)
+    if target.exists():
+        shutil.rmtree(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(skill_dir, target, symlinks=False)
+    (target / "SKILL.md").write_text(stamped)
     return InstalledSkill(name=target.name, path=target, content_hash=content_hash)
+
+
+def _stamp_violation(name: str, error: StampError) -> SkillViolation:
+    return SkillViolation(skill=name, rule="unstampable", message=f"{name}: {error}")
 
 
 @dataclass(frozen=True)
@@ -224,10 +235,12 @@ def update(
             if violations:
                 result.rejected.extend(violations)
                 continue
-            shutil.rmtree(target)
-            result.updated.append(
-                _copy_and_stamp(skill_dir, target, source_package, source_version)
-            )
+            try:
+                result.updated.append(
+                    _copy_and_stamp(skill_dir, target, source_package, source_version)
+                )
+            except StampError as error:
+                result.rejected.append(_stamp_violation(entry.name, error))
     return result
 
 
