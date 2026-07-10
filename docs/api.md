@@ -29,6 +29,22 @@ detect, install, status, update, or uninstall.
   local directory.
 - `SourceSkill` - one enumerable skill: `name`, `content_hash`.
 
+## Entry-point marker (optional)
+
+A consumer package may mark itself as skill-carrying by registering under
+the `agentsquire.skills` pyproject entry-point group (exported as
+`ENTRY_POINT_GROUP`). The registration is one line - the value is the
+importable package whose bundled skills live in its package data, the same
+name you pass to `BundledPackageDataSource` or `skills_command_group`:
+
+```toml
+[project.entry-points."agentsquire.skills"]
+awiki = "awiki"
+```
+
+Registering changes no behaviour: no verb reads the group today. It is
+reserved for a future environment-wide listing of skill-carrying packages.
+
 ## Detect: harness backends
 
 - `default_registry() -> HarnessRegistry` - a fresh registry with the four

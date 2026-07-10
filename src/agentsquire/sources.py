@@ -17,6 +17,11 @@ from typing import Iterator, Protocol, runtime_checkable
 
 from agentsquire.hashing import skill_content_hash
 
+# Pyproject entry-point group a consumer may register under to mark itself
+# skill-carrying, reserved for a future environment-wide listing. Registering
+# is optional and nothing reads it at launch: no verb changes behaviour.
+ENTRY_POINT_GROUP = "agentsquire.skills"
+
 
 @dataclass(frozen=True)
 class SourceSkill:

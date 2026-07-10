@@ -29,6 +29,7 @@ from agentsquire.skills import (
     validate_skill_dir,
 )
 from agentsquire.sources import (
+    ENTRY_POINT_GROUP,
     BundledPackageDataSource,
     DirectorySource,
     SkillSource,
@@ -69,6 +70,7 @@ __all__ = [
     "SourceSkill",
     "DirectorySource",
     "BundledPackageDataSource",
+    "ENTRY_POINT_GROUP",
     # harnesses (detect)
     "HarnessBackend",
     "HarnessRegistry",
