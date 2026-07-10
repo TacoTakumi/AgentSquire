@@ -10,6 +10,7 @@ installer, source package, and content hash.
 
 from __future__ import annotations
 
+import enum
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,8 +19,22 @@ import agentsquire
 from agentsquire.harnesses import HarnessBackend
 from agentsquire.hashing import skill_content_hash
 from agentsquire.skills import SkillViolation, validate_skill_dir
-from agentsquire.sources import SkillSource
-from agentsquire.stamping import stamped_skill_md
+from agentsquire.sources import SkillSource, SourceSkill
+from agentsquire.stamping import read_stamp, stamped_skill_md
+
+
+class SkillState(enum.Enum):
+    NOT_INSTALLED = "not-installed"
+    UP_TO_DATE = "up-to-date"
+    UPDATE_AVAILABLE = "update-available"
+    LOCALLY_MODIFIED = "locally-modified"
+
+
+@dataclass(frozen=True)
+class SkillStatus:
+    name: str
+    state: SkillState
+    path: Path
 
 
 @dataclass(frozen=True)
@@ -38,12 +53,53 @@ class SkippedSkill:
 @dataclass(frozen=True)
 class InstallResult:
     installed: list[InstalledSkill] = field(default_factory=list)
+    up_to_date: list[SkillStatus] = field(default_factory=list)
     rejected: list[SkillViolation] = field(default_factory=list)
     skipped: list[SkippedSkill] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
         return not self.rejected
+
+
+def _classify(entry: SourceSkill, target: Path) -> SkillState:
+    """One skill's state from local hash compares only (REQ-11, no network).
+
+    A same-named directory without our stamp, or whose content no longer
+    matches its own stamped hash, is locally modified — never ours to touch.
+    """
+    if not target.exists():
+        return SkillState.NOT_INSTALLED
+    manifest = target / "SKILL.md"
+    if not manifest.is_file():
+        return SkillState.LOCALLY_MODIFIED
+    stamp = read_stamp(manifest.read_text())
+    stamped_hash = stamp.get("content_hash") if stamp else None
+    if stamped_hash != skill_content_hash(target):
+        return SkillState.LOCALLY_MODIFIED
+    if stamped_hash != entry.content_hash:
+        return SkillState.UPDATE_AVAILABLE
+    return SkillState.UP_TO_DATE
+
+
+def status(
+    source: SkillSource,
+    backend: HarnessBackend,
+    *,
+    scope: str,
+    home: Path,
+    project: Path,
+) -> list[SkillStatus]:
+    """Classify every source skill against the backend's scope directory."""
+    target_root = backend.skills_dir(scope, home=home, project=project)
+    return [
+        SkillStatus(
+            name=entry.name,
+            state=_classify(entry, target_root / entry.name),
+            path=target_root / entry.name,
+        )
+        for entry in source.list_skills()
+    ]
 
 
 def install(
@@ -58,8 +114,10 @@ def install(
 ) -> InstallResult:
     """Copy every valid skill in the source into the backend's scope directory.
 
-    Invalid skills are rejected with their violations without stopping the
-    run; already-present skill directories are skipped, never overwritten.
+    Idempotent: a current install is a byte-identical no-op reported as
+    up-to-date (REQ-10). Invalid skills are rejected with their violations
+    without stopping the run; stale or locally-modified installs are skipped,
+    never overwritten — updating is the update verb's job.
     """
     target_root = backend.skills_dir(scope, home=home, project=project)
     result = InstallResult()
@@ -70,9 +128,15 @@ def install(
                 result.rejected.extend(violations)
                 continue
             target = target_root / entry.name
-            if target.exists():
+            state = _classify(entry, target)
+            if state is SkillState.UP_TO_DATE:
+                result.up_to_date.append(
+                    SkillStatus(name=entry.name, state=state, path=target)
+                )
+                continue
+            if state is not SkillState.NOT_INSTALLED:
                 result.skipped.append(
-                    SkippedSkill(name=entry.name, reason="already installed")
+                    SkippedSkill(name=entry.name, reason=state.value)
                 )
                 continue
             content_hash = skill_content_hash(skill_dir)
