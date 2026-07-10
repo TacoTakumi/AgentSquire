@@ -107,7 +107,9 @@ def notice_permitted(monkeypatch, capsys):
     """
     monkeypatch.delenv("CI", raising=False)
     monkeypatch.delenv("AGENTSQUIRE_NO_UPDATE_CHECK", raising=False)
-    monkeypatch.setattr(sys.stderr, "isatty", lambda: True, raising=False)
+    # Patch the class, not the instance: pytest swaps the captured stream
+    # object between fixture setup and the test call.
+    monkeypatch.setattr(type(sys.stderr), "isatty", lambda self: True, raising=False)
     return capsys
 
 
@@ -203,6 +205,74 @@ class TestNotice:
         assert result is None
         assert captured.out == ""
         assert captured.err == ""
+
+
+class TestGating:
+    """REQ-06/REQ-07 truth table: TTY stderr + presence-disables env vars."""
+
+    @pytest.fixture
+    def stale(self, tmp_path):
+        source = make_env(tmp_path, ("awiki-search",))
+        make_stale(tmp_path, "awiki-search")
+        return source, tmp_path
+
+    def test_tty_and_unset_env_shows_exactly_one_line(self, stale, notice_permitted):
+        source, root = stale
+
+        call(source, root)
+
+        captured = notice_permitted.readouterr()
+        assert captured.out == ""
+        assert len(captured.err.splitlines()) == 1
+
+    def test_non_tty_stderr_is_silent(self, stale, monkeypatch, capsys):
+        source, root = stale
+        monkeypatch.delenv("CI", raising=False)
+        monkeypatch.delenv("AGENTSQUIRE_NO_UPDATE_CHECK", raising=False)
+        monkeypatch.setattr(type(sys.stderr), "isatty", lambda self: False, raising=False)
+
+        call(source, root)
+
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+    @pytest.mark.parametrize(
+        ("var", "value"),
+        [
+            ("CI", "false"),
+            ("CI", "1"),
+            ("AGENTSQUIRE_NO_UPDATE_CHECK", "0"),
+            ("AGENTSQUIRE_NO_UPDATE_CHECK", "true"),
+        ],
+    )
+    def test_any_nonempty_suppression_value_silences(
+        self, stale, notice_permitted, monkeypatch, var, value
+    ):
+        source, root = stale
+        monkeypatch.setenv(var, value)
+
+        call(source, root)
+
+        captured = notice_permitted.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+    def test_empty_string_env_values_behave_as_unset(
+        self, stale, notice_permitted, monkeypatch
+    ):
+        source, root = stale
+        monkeypatch.setenv("CI", "")
+        monkeypatch.setenv("AGENTSQUIRE_NO_UPDATE_CHECK", "")
+
+        call(source, root)
+
+        captured = notice_permitted.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            "awiki: a skills update is available for 1 skill (awiki-search);"
+            " run `awiki skills update`\n"
+        )
 
 
 class TestNeverMutatesOrConsumes:

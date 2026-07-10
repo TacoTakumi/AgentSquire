@@ -11,6 +11,7 @@ compares only.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -36,6 +37,13 @@ def check_stale(
     change the exit code of, the consumer command it runs inside.
     """
     try:
+        # Notice gate: interactive stderr only, and any non-empty value of
+        # CI or AGENTSQUIRE_NO_UPDATE_CHECK disables (presence-disables,
+        # the NO_COLOR convention; empty string counts as unset).
+        if not sys.stderr.isatty():
+            return
+        if os.environ.get("CI") or os.environ.get("AGENTSQUIRE_NO_UPDATE_CHECK"):
+            return
         home = home or Path.home()
         project = project or Path.cwd()
         backends = (
