@@ -1,23 +1,30 @@
-"""Proactive staleness check hook (REQ-17).
+"""Notice-only staleness check hook (REQ-01, REQ-02, REQ-03, REQ-05, REQ-13).
 
-A consumer script calls check_stale() at startup, then does its own work.
-Run under a pty with a stale install, the hook announces and offers to
-update, and accepting runs the update. Run without a TTY it never prompts or
-blocks, writes nothing to stdout, emits at most one stderr notice line, and
-leaves the exit code untouched. Local-only.
+check_stale is a safe startup hook: with update-available skills it prints
+exactly one advisory line on stderr naming the real CLI and the exact update
+command, and nothing else. It never reads stdin, never prompts, never
+updates anything, never writes stdout, never raises, and never changes the
+consumer command's exit code.
 """
 
+import ast
+import inspect
+import io
 import os
-import pty
-import select
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
 
+import agentsquire.staleness
+from agentsquire import check_stale
+from agentsquire.harnesses import CLAUDE_CODE
+from agentsquire.sources import DirectorySource
+from agentsquire.verbs import install
+
 SRC = Path(__file__).parent.parent / "src"
+STALENESS_SOURCE = Path(agentsquire.staleness.__file__).with_suffix(".py").read_text()
 
 CONSUMER_SCRIPT = """\
 import sys
@@ -32,8 +39,8 @@ sq.check_stale(
     scope="user",
     home=root / "home",
     project=root / "project",
-    source_package="fixture-consumer",
-    source_version="1.2.3",
+    prog_name="awiki",
+    update_command="awiki skills update",
 )
 print("COMMAND OUTPUT")
 """
@@ -49,167 +56,209 @@ def write_skill(root: Path, name: str) -> Path:
     return skill
 
 
-@pytest.fixture
-def env(tmp_path):
-    """A root with bundle/home/project, one skill installed up to date."""
-    from agentsquire.harnesses import CLAUDE_CODE
-    from agentsquire.sources import DirectorySource
-    from agentsquire.verbs import install
-
+def make_env(root: Path, names: tuple[str, ...]) -> DirectorySource:
+    """bundle/home/project roots with the named skills installed up to date."""
     for sub in ("home", "project", "bundle"):
-        (tmp_path / sub).mkdir()
-    write_skill(tmp_path / "bundle", "alpha")
+        (root / sub).mkdir()
+    for name in names:
+        write_skill(root / "bundle", name)
+    source = DirectorySource(root / "bundle")
     install(
-        DirectorySource(tmp_path / "bundle"),
+        source,
         CLAUDE_CODE,
         scope="user",
-        home=tmp_path / "home",
-        project=tmp_path / "project",
+        home=root / "home",
+        project=root / "project",
         source_package="fixture-consumer",
         source_version="1.2.3",
     )
-    script = tmp_path / "consumer.py"
-    script.write_text(CONSUMER_SCRIPT)
-    return tmp_path, script
+    return source
 
 
-def make_stale(root: Path) -> None:
-    (root / "bundle" / "alpha" / "reference.md").write_text("v2\n")
+def make_stale(root: Path, name: str) -> None:
+    (root / "bundle" / name / "reference.md").write_text("v2\n")
 
 
-def installed_reference(root: Path) -> str:
-    return (root / "home" / ".claude" / "skills" / "alpha" / "reference.md").read_text()
+def snapshot(directory: Path) -> dict[str, bytes]:
+    return {
+        str(path.relative_to(directory)): path.read_bytes()
+        for path in sorted(directory.rglob("*"))
+        if path.is_file()
+    }
 
 
-def run_no_tty(root: Path, script: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(script), str(root)],
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        timeout=30,
-        env={**os.environ, "PYTHONPATH": str(SRC)},
+def call(source, root: Path):
+    return check_stale(
+        source,
+        CLAUDE_CODE,
+        scope="user",
+        home=root / "home",
+        project=root / "project",
+        prog_name="awiki",
+        update_command="awiki skills update",
     )
 
 
-def run_in_pty(root: Path, script: Path, answer: bytes, timeout: float = 30.0) -> str:
-    """Run the consumer under a pty, sending answer when the prompt appears."""
-    master, slave = pty.openpty()
-    proc = subprocess.Popen(
-        [sys.executable, str(script), str(root)],
-        stdin=slave,
-        stdout=slave,
-        stderr=slave,
-        env={**os.environ, "PYTHONPATH": str(SRC)},
-    )
-    os.close(slave)
-    output = b""
-    answered = False
-    deadline = time.monotonic() + timeout
-    try:
-        while time.monotonic() < deadline:
-            ready, _, _ = select.select([master], [], [], 0.2)
-            if ready:
-                try:
-                    chunk = os.read(master, 4096)
-                except OSError:
-                    break
-                if not chunk:
-                    break
-                output += chunk
-                if not answered and b"[y/N]" in output:
-                    os.write(master, answer)
-                    answered = True
-            elif proc.poll() is not None:
-                break
-        else:
-            proc.kill()
-            pytest.fail(f"consumer did not finish; output so far: {output!r}")
-    finally:
-        os.close(master)
-        proc.wait(timeout=10)
-    return output.decode()
+@pytest.fixture
+def notice_permitted(monkeypatch, capsys):
+    """Force notice-permitting conditions: suppression env unset, stderr a TTY.
+
+    Depends on capsys so the isatty patch lands on the captured stderr.
+    """
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("AGENTSQUIRE_NO_UPDATE_CHECK", raising=False)
+    monkeypatch.setattr(sys.stderr, "isatty", lambda: True, raising=False)
+    return capsys
 
 
-class TestNonTty:
-    def test_fresh_case_is_silent(self, env):
-        root, script = env
+class TestStructural:
+    def test_source_never_touches_stdin_or_prompts(self):
+        assert "stdin" not in STALENESS_SOURCE
+        assert "readline" not in STALENESS_SOURCE
+        assert "Update now?" not in STALENESS_SOURCE
 
-        proc = run_no_tty(root, script)
+    def test_update_verb_neither_imported_nor_called(self):
+        tree = ast.parse(STALENESS_SOURCE)
+        imported = [
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Import, ast.ImportFrom))
+            for alias in node.names
+        ]
+        assert "update" not in imported
+        called = [
+            node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", None)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+        ]
+        assert "update" not in called
+
+
+class TestSignature:
+    def test_prog_name_and_update_command_are_required_keyword_only(self):
+        params = inspect.signature(check_stale).parameters
+        for name in ("prog_name", "update_command"):
+            assert params[name].kind is inspect.Parameter.KEYWORD_ONLY
+            assert params[name].default is inspect.Parameter.empty
+        assert "source_package" not in params
+        assert "source_version" not in params
+
+    def test_calling_without_prog_name_or_update_command_raises(self, tmp_path):
+        with pytest.raises(TypeError):
+            check_stale(DirectorySource(tmp_path))
+
+    def test_passing_source_package_or_source_version_raises(self, tmp_path):
+        source = DirectorySource(tmp_path)
+        with pytest.raises(TypeError):
+            check_stale(
+                source,
+                prog_name="awiki",
+                update_command="awiki skills update",
+                source_package="fixture-consumer",
+            )
+        with pytest.raises(TypeError):
+            check_stale(
+                source,
+                prog_name="awiki",
+                update_command="awiki skills update",
+                source_version="1.2.3",
+            )
+
+
+class TestNotice:
+    def test_one_stale_skill_prints_the_exact_stderr_line(self, tmp_path, notice_permitted):
+        source = make_env(tmp_path, ("awiki-search",))
+        make_stale(tmp_path, "awiki-search")
+
+        result = call(source, tmp_path)
+
+        captured = notice_permitted.readouterr()
+        assert result is None
+        assert captured.out == ""
+        assert captured.err == (
+            "awiki: a skills update is available for 1 skill (awiki-search);"
+            " run `awiki skills update`\n"
+        )
+
+    def test_two_stale_skills_pluralize_and_sort_names(self, tmp_path, notice_permitted):
+        source = make_env(tmp_path, ("beta", "alpha"))
+        make_stale(tmp_path, "alpha")
+        make_stale(tmp_path, "beta")
+
+        call(source, tmp_path)
+
+        captured = notice_permitted.readouterr()
+        assert captured.out == ""
+        assert captured.err == (
+            "awiki: a skills update is available for 2 skills (alpha, beta);"
+            " run `awiki skills update`\n"
+        )
+
+    def test_fresh_install_is_silent(self, tmp_path, notice_permitted):
+        source = make_env(tmp_path, ("awiki-search",))
+
+        result = call(source, tmp_path)
+
+        captured = notice_permitted.readouterr()
+        assert result is None
+        assert captured.out == ""
+        assert captured.err == ""
+
+
+class TestNeverMutatesOrConsumes:
+    def test_installed_content_and_stamp_are_untouched(self, tmp_path, notice_permitted):
+        source = make_env(tmp_path, ("awiki-search",))
+        make_stale(tmp_path, "awiki-search")
+        installed = tmp_path / "home" / ".claude" / "skills"
+        before = snapshot(installed)
+
+        call(source, tmp_path)
+
+        assert snapshot(installed) == before
+        assert before  # the snapshot actually covered installed files
+
+    def test_a_prewritten_stdin_line_is_still_readable_verbatim(
+        self, tmp_path, notice_permitted, monkeypatch
+    ):
+        source = make_env(tmp_path, ("awiki-search",))
+        make_stale(tmp_path, "awiki-search")
+        monkeypatch.setattr(sys, "stdin", io.StringIO("sentinel line\n"))
+
+        call(source, tmp_path)
+
+        assert sys.stdin.readline() == "sentinel line\n"
+
+
+class TestSafeHook:
+    def test_internal_errors_are_swallowed(self, tmp_path, notice_permitted, monkeypatch):
+        source = make_env(tmp_path, ("awiki-search",))
+        make_stale(tmp_path, "awiki-search")
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("status exploded")
+
+        monkeypatch.setattr(agentsquire.staleness, "status", boom)
+
+        result = call(source, tmp_path)
+
+        captured = notice_permitted.readouterr()
+        assert result is None
+        assert captured.out == ""
+        assert captured.err == ""
+
+    def test_wrapper_process_keeps_stdout_and_exit_code(self, tmp_path):
+        make_env(tmp_path, ("awiki-search",))
+        make_stale(tmp_path, "awiki-search")
+        script = tmp_path / "consumer.py"
+        script.write_text(CONSUMER_SCRIPT)
+
+        proc = subprocess.run(
+            [sys.executable, str(script), str(tmp_path)],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=30,
+            env={**os.environ, "PYTHONPATH": str(SRC)},
+        )
 
         assert proc.returncode == 0
         assert proc.stdout == b"COMMAND OUTPUT\n"
-        assert proc.stderr == b""
-
-    def test_stale_case_never_blocks_and_keeps_stdout_and_exit_code(self, env):
-        root, script = env
-        fresh = run_no_tty(root, script)
-        make_stale(root)
-
-        proc = run_no_tty(root, script)
-
-        assert proc.returncode == fresh.returncode == 0
-        assert proc.stdout == fresh.stdout  # byte-identical stdout
-        stderr_lines = proc.stderr.decode().splitlines()
-        assert len(stderr_lines) <= 1
-        assert "update" in stderr_lines[0].lower()
-        # no update actually ran
-        assert installed_reference(root) == "reference for alpha\n"
-
-
-class TestTty:
-    def test_announces_prompts_and_yes_runs_the_update(self, env):
-        root, script = env
-        make_stale(root)
-
-        output = run_in_pty(root, script, b"y\n")
-
-        assert "new version" in output
-        assert "[y/N]" in output
-        assert "COMMAND OUTPUT" in output
-        assert installed_reference(root) == "v2\n"
-
-    def test_declining_leaves_the_install_alone(self, env):
-        root, script = env
-        make_stale(root)
-
-        output = run_in_pty(root, script, b"n\n")
-
-        assert "[y/N]" in output
-        assert "COMMAND OUTPUT" in output
-        assert installed_reference(root) == "reference for alpha\n"
-
-    def test_fresh_case_shows_no_prompt(self, env):
-        root, script = env
-
-        output = run_in_pty(root, script, b"")
-
-        assert "[y/N]" not in output
-        assert "COMMAND OUTPUT" in output
-
-
-def test_stale_count_is_skills_not_harness_pairs(tmp_path, capsys):
-    """One stale skill visible on two detected harnesses is one skill."""
-    from agentsquire import check_stale
-    from agentsquire.harnesses import CLAUDE_CODE, HERMES
-    from agentsquire.sources import DirectorySource
-    from agentsquire.verbs import install
-
-    for sub in ("home", "project", "bundle"):
-        (tmp_path / sub).mkdir()
-    write_skill(tmp_path / "bundle", "alpha")
-    source = DirectorySource(tmp_path / "bundle")
-    roots = {"home": tmp_path / "home", "project": tmp_path / "project"}
-    for backend in (CLAUDE_CODE, HERMES):
-        install(
-            source, backend, scope="user", **roots,
-            source_package="fixture-consumer", source_version="1.2.3",
-        )
-    make_stale(tmp_path)
-
-    check_stale(
-        source, scope="user", **roots,
-        source_package="fixture-consumer", source_version="1.2.3",
-    )
-
-    err = capsys.readouterr().err
-    assert "1 skill(s)" in err, err
