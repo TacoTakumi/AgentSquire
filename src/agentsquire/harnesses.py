@@ -16,6 +16,8 @@ SCOPES = ("user", "project")
 
 
 class UnknownHarnessError(Exception):
+    """An unsupported harness was named; the message lists the supported set."""
+
     def __init__(self, name: str, supported: list[str]):
         self.name = name
         self.supported = supported
@@ -25,6 +27,8 @@ class UnknownHarnessError(Exception):
 
 
 class HarnessNotDetectedError(Exception):
+    """A supported harness was named but is not present in this environment."""
+
     def __init__(self, name: str):
         self.name = name
         super().__init__(
@@ -33,6 +37,8 @@ class HarnessNotDetectedError(Exception):
 
 
 class UnsupportedScopeError(Exception):
+    """The harness has no skills directory for the requested scope."""
+
     def __init__(self, name: str, scope: str):
         self.name = name
         self.scope = scope
@@ -66,6 +72,8 @@ class HarnessBackend:
 
 
 class HarnessRegistry:
+    """Registered backends: detection across them, resolution by name."""
+
     def __init__(self):
         self._backends: dict[str, HarnessBackend] = {}
 

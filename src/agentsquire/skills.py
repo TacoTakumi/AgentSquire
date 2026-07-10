@@ -14,6 +14,8 @@ import yaml
 
 @dataclass(frozen=True)
 class Skill:
+    """A parsed, structurally valid skill directory."""
+
     name: str
     description: str
     path: Path
@@ -22,12 +24,16 @@ class Skill:
 
 @dataclass(frozen=True)
 class SkillViolation:
+    """One broken structural rule in one skill directory."""
+
     skill: str
     rule: str
     message: str
 
 
 class InvalidSkillError(Exception):
+    """Raised by load_skill when a skill directory breaks structural rules."""
+
     def __init__(self, violations: list[SkillViolation]):
         self.violations = violations
         super().__init__("; ".join(v.message for v in violations))

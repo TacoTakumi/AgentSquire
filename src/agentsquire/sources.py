@@ -20,12 +20,16 @@ from agentsquire.hashing import skill_content_hash
 
 @dataclass(frozen=True)
 class SourceSkill:
+    """One skill a source can provide: its name and content hash."""
+
     name: str
     content_hash: str
 
 
 @runtime_checkable
 class SkillSource(Protocol):
+    """Where skills come from: list them, materialize one to a directory."""
+
     def list_skills(self) -> list[SourceSkill]: ...
 
     def materialize(self, name: str):

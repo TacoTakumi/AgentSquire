@@ -24,6 +24,8 @@ from agentsquire.stamping import read_stamp, stamped_skill_md
 
 
 class SkillState(enum.Enum):
+    """The four mutually exclusive states of a skill per harness x scope."""
+
     NOT_INSTALLED = "not-installed"
     UP_TO_DATE = "up-to-date"
     UPDATE_AVAILABLE = "update-available"
@@ -32,6 +34,8 @@ class SkillState(enum.Enum):
 
 @dataclass(frozen=True)
 class SkillStatus:
+    """One skill's classified state at its target path."""
+
     name: str
     state: SkillState
     path: Path
@@ -39,6 +43,8 @@ class SkillStatus:
 
 @dataclass(frozen=True)
 class InstalledSkill:
+    """One skill copied and stamped at its installed path."""
+
     name: str
     path: Path
     content_hash: str
@@ -46,12 +52,16 @@ class InstalledSkill:
 
 @dataclass(frozen=True)
 class SkippedSkill:
+    """One skill a verb left untouched, and why."""
+
     name: str
     reason: str
 
 
 @dataclass(frozen=True)
 class InstallResult:
+    """Per-skill outcomes of one install run; ok is False when any rejected."""
+
     installed: list[InstalledSkill] = field(default_factory=list)
     up_to_date: list[SkillStatus] = field(default_factory=list)
     rejected: list[SkillViolation] = field(default_factory=list)
@@ -165,6 +175,8 @@ def _copy_and_stamp(
 
 @dataclass(frozen=True)
 class UpdateResult:
+    """Per-skill outcomes of one update run; ok is False when any rejected."""
+
     updated: list[InstalledSkill] = field(default_factory=list)
     up_to_date: list[SkillStatus] = field(default_factory=list)
     rejected: list[SkillViolation] = field(default_factory=list)
@@ -221,12 +233,16 @@ def update(
 
 @dataclass(frozen=True)
 class RemovedSkill:
+    """One our-stamped skill directory that uninstall removed."""
+
     name: str
     path: Path
 
 
 @dataclass(frozen=True)
 class UninstallResult:
+    """Per-skill outcomes of one uninstall run."""
+
     removed: list[RemovedSkill] = field(default_factory=list)
     skipped: list[SkippedSkill] = field(default_factory=list)
 

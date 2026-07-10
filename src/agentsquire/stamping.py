@@ -17,7 +17,7 @@ from agentsquire.hashing import STAMP_KEY
 
 
 class StampError(Exception):
-    pass
+    """Stamping could not proceed without altering non-stamp content."""
 
 
 def read_stamp(text: str) -> dict | None:
