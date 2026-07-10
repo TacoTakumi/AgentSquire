@@ -71,7 +71,7 @@ def test_each_scope_recorded_with_a_path_or_explicit_none(harness, scope):
     )
 
 
-@pytest.mark.parametrize("harness", ["Claude Code", "pi", "opencode"])
+@pytest.mark.parametrize("harness", HARNESSES)
 def test_public_harnesses_cite_official_doc_urls(harness):
     section = parse_sections()[harness]
 

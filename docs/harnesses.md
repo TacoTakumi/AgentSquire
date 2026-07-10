@@ -63,19 +63,32 @@ against.
 
 - **Skill directories per scope:**
   - user: `~/.hermes/skills/`
-  - project: `.hermes/skills/`
-- **Discovery / precedence:** Hermes is our own harness; **this entry is
-  the normative contract, defined here** (D-03) — Hermes implements what
-  this document records, not the other way around. Contract: every direct
-  subdirectory of a skills dir containing a `SKILL.md` with agentskills.io
-  frontmatter (name equal to the directory name, description present) is a
-  skill; both scopes are supported; on a name collision the project scope
-  shadows the user scope; symlinked skill directories are not followed.
-- **Official docs:** none public — this section is the normative
-  specification of Hermes skill support until Hermes ships public docs.
-- **Local source checkout:** not present on this machine at verification
-  time (2026-07-10). When a Hermes checkout exists it goes at
-  `checkouts/hermes`; until then this contract section is the evidence.
+  - project: none — Hermes has no per-project skills directory. Skills
+    live under `HERMES_HOME` (env-overridable, default `~/.hermes` on
+    Linux/macOS, `%LOCALAPPDATA%\hermes` on Windows); extra directories
+    can be configured via `skills.external_dirs` in
+    `~/.hermes/config.yaml`, but that is user-level config, not a project
+    scope. The backend must error clearly when project scope is requested.
+- **Discovery / precedence:** `tools/skills_tool.py:_find_all_skills`
+  scans `~/.hermes/skills/` (seeded from the bundled `skills/` tree on
+  install) **recursively** — skills may nest under category directories
+  (e.g. `skills/mlops/axolotl/SKILL.md`), with the category derived from
+  the subpath — then scans each configured external dir; the local skills
+  dir is scanned first and takes precedence on duplicate names. Skills
+  resolved from outside `~/.hermes/skills/` are flagged with a trust
+  warning. Disabled skills are filtered via config (global +
+  per-platform lists). Frontmatter follows agentskills.io; Hermes reads
+  its own extensions from `metadata.hermes.*` — the same
+  frontmatter-metadata convention as our `metadata.agentsquire` stamp.
+- **Official docs:**
+  - https://github.com/NousResearch/hermes-agent
+- **Local source checkout:** `checkouts/hermes`
+  (`git clone --depth 1 https://github.com/NousResearch/hermes-agent.git checkouts/hermes`);
+  verified at commit `97e9c64` (2026-07-10). A full working checkout also
+  lives at `~/AI/hermes-agent`. Evidence files:
+  `hermes_constants.py` (`get_hermes_home` lines ~46-80, `get_skills_dir`
+  line ~923), `tools/skills_tool.py` (lines ~139, ~660-730, ~1257, ~1453),
+  `agent/skill_utils.py` (`get_external_skills_dirs` line ~420).
 
 ## opencode
 
