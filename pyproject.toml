@@ -1,0 +1,27 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentsquire"
+version = "0.1.0"
+description = "Let a Python package carry its own agent integrations and install them into whatever agent harness is present."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "TacoTakumi" }]
+dependencies = [
+    "pyyaml",
+    "click",
+]
+
+[dependency-groups]
+dev = [
+    "build",
+    "pytest",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
