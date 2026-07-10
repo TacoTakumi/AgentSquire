@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 from agentsquire.harnesses import HarnessBackend, default_registry
+from agentsquire.roots import resolve_roots
 from agentsquire.sources import SkillSource
 from agentsquire.verbs import SkillState, status
 
@@ -45,8 +46,7 @@ def check_stale(
         # update is available. CI stays the escape hatch for pipelines.
         if os.environ.get("CI") or os.environ.get("AGENTSQUIRE_NO_UPDATE_CHECK"):
             return
-        home = home or Path.home()
-        project = project or Path.cwd()
+        home, project = resolve_roots(home, project)
         backends = (
             [backend]
             if backend is not None

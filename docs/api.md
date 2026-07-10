@@ -181,6 +181,32 @@ project=project, source_package="your_pkg", source_version="1.0")`;
 `status`, `update`, `uninstall`, and `check_stale` take `home=` and
 `project=` the same way.
 
+### Redirecting a wired CLI with env vars
+
+Explicit roots cover a *direct* call, but the test that matters most drives
+your own CLI end to end - and that wiring omits `home=`/`project=` on purpose,
+so each real invocation resolves `Path.home()`/`Path.cwd()`. To point those
+unset roots at fixtures without monkeypatching `Path.home` or chdir, set
+`AGENTSQUIRE_HOME` and `AGENTSQUIRE_PROJECT`:
+
+```python
+def test_my_cli_reports_updates(tmp_path, monkeypatch):
+    home, project = tmp_path / "home", tmp_path / "project"
+    (home / ".claude").mkdir(parents=True)  # marker so the harness is detected
+    project.mkdir()
+    monkeypatch.setenv("AGENTSQUIRE_HOME", str(home))
+    monkeypatch.setenv("AGENTSQUIRE_PROJECT", str(project))
+
+    # my_cli wires check_stale and mounts the skills group with no home=/project=
+    result = CliRunner().invoke(my_cli, ["skills", "status"])
+    assert result.exit_code == 0
+```
+
+The overrides fill in wherever roots are otherwise taken from the real
+environment - the `check_stale` hook and the mounted `skills` subcommands.
+Explicit `home=`/`project=` arguments still win over the env vars, and an
+empty value is treated as unset (the `NO_COLOR` convention).
+
 ## Building blocks
 
 - `validate_skill_dir(path) -> list[SkillViolation]` - agentskills.io

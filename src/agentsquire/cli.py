@@ -23,6 +23,7 @@ from agentsquire.harnesses import (
     UnsupportedScopeError,
     default_registry,
 )
+from agentsquire.roots import resolve_roots
 from agentsquire.verbs import install as install_verb
 from agentsquire.verbs import status as status_verb
 from agentsquire.verbs import uninstall as uninstall_verb
@@ -79,8 +80,7 @@ def skills_command_group(
 
     def targets(harness: str | None):
         """(backends, home, project) for this invocation, or a clear error."""
-        target_home = home or Path.home()
-        target_project = project or Path.cwd()
+        target_home, target_project = resolve_roots(home, project)
         registry = default_registry()
         if harness is not None:
             try:

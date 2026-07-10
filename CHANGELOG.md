@@ -8,7 +8,18 @@ The version is declared in two places that are kept in sync by the release
 tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
 `pyproject.toml`.
 
-## [0.1.1] - 2026-07-10
+## [0.2.0] - 2026-07-10
+
+### Added
+- **`AGENTSQUIRE_HOME` / `AGENTSQUIRE_PROJECT` root overrides.** When
+  `check_stale` and the mounted `skills` subcommands are wired the production
+  way (no `home=`/`project=` arguments, so each invocation resolves the real
+  roots), these env vars redirect the home and project roots. A consumer's
+  CLI-level test can point the wired hook and the subcommands at fixture
+  directories by setting two variables instead of monkeypatching `Path.home`
+  and chdir. Explicit `home=`/`project=` arguments still take precedence; an
+  empty value is treated as unset (the `NO_COLOR` convention). Documented in
+  the `docs/api.md` "Testing your integration" section.
 
 ### Fixed
 - **`check_stale` now surfaces the update notice on non-TTY stderr.** The
