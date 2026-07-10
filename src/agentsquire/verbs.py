@@ -139,19 +139,81 @@ def install(
                     SkippedSkill(name=entry.name, reason=state.value)
                 )
                 continue
-            content_hash = skill_content_hash(skill_dir)
-            target_root.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(skill_dir, target, symlinks=False)
-            stamp = {
-                "installer": "agentsquire",
-                "installer_version": agentsquire.__version__,
-                "source_package": source_package,
-                "source_version": source_version,
-                "content_hash": content_hash,
-            }
-            manifest = target / "SKILL.md"
-            manifest.write_text(stamped_skill_md(manifest.read_text(), stamp))
             result.installed.append(
-                InstalledSkill(name=entry.name, path=target, content_hash=content_hash)
+                _copy_and_stamp(skill_dir, target, source_package, source_version)
+            )
+    return result
+
+
+def _copy_and_stamp(
+    skill_dir: Path, target: Path, source_package: str, source_version: str
+) -> InstalledSkill:
+    content_hash = skill_content_hash(skill_dir)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(skill_dir, target, symlinks=False)
+    stamp = {
+        "installer": "agentsquire",
+        "installer_version": agentsquire.__version__,
+        "source_package": source_package,
+        "source_version": source_version,
+        "content_hash": content_hash,
+    }
+    manifest = target / "SKILL.md"
+    manifest.write_text(stamped_skill_md(manifest.read_text(), stamp))
+    return InstalledSkill(name=target.name, path=target, content_hash=content_hash)
+
+
+@dataclass(frozen=True)
+class UpdateResult:
+    updated: list[InstalledSkill] = field(default_factory=list)
+    up_to_date: list[SkillStatus] = field(default_factory=list)
+    rejected: list[SkillViolation] = field(default_factory=list)
+    skipped: list[SkippedSkill] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.rejected
+
+
+def update(
+    source: SkillSource,
+    backend: HarnessBackend,
+    *,
+    scope: str,
+    home: Path,
+    project: Path,
+    source_package: str,
+    source_version: str,
+    force: bool = False,
+) -> UpdateResult:
+    """Re-copy and re-stamp every update-available skill (REQ-12).
+
+    Locally-modified installs are skipped — the result names each one — and
+    only an explicit force overwrites them. Not-installed skills are left to
+    the install verb.
+    """
+    target_root = backend.skills_dir(scope, home=home, project=project)
+    result = UpdateResult()
+    for entry in source.list_skills():
+        target = target_root / entry.name
+        state = _classify(entry, target)
+        if state is SkillState.UP_TO_DATE:
+            result.up_to_date.append(
+                SkillStatus(name=entry.name, state=state, path=target)
+            )
+            continue
+        if state is SkillState.NOT_INSTALLED or (
+            state is SkillState.LOCALLY_MODIFIED and not force
+        ):
+            result.skipped.append(SkippedSkill(name=entry.name, reason=state.value))
+            continue
+        with source.materialize(entry.name) as skill_dir:
+            violations = validate_skill_dir(skill_dir)
+            if violations:
+                result.rejected.extend(violations)
+                continue
+            shutil.rmtree(target)
+            result.updated.append(
+                _copy_and_stamp(skill_dir, target, source_package, source_version)
             )
     return result
