@@ -217,3 +217,60 @@ def update(
                 _copy_and_stamp(skill_dir, target, source_package, source_version)
             )
     return result
+
+
+@dataclass(frozen=True)
+class RemovedSkill:
+    name: str
+    path: Path
+
+
+@dataclass(frozen=True)
+class UninstallResult:
+    removed: list[RemovedSkill] = field(default_factory=list)
+    skipped: list[SkippedSkill] = field(default_factory=list)
+
+
+def uninstall(
+    source: SkillSource,
+    backend: HarnessBackend,
+    *,
+    scope: str,
+    home: Path,
+    project: Path,
+    source_package: str,
+) -> UninstallResult:
+    """Remove installed skill dirs whose stamp names us and the consumer.
+
+    A same-named directory that is unstamped, or stamped by a different
+    installer or source package, is left in place with the reason recorded
+    (REQ-13) — it is not ours to delete.
+    """
+    target_root = backend.skills_dir(scope, home=home, project=project)
+    result = UninstallResult()
+    for entry in source.list_skills():
+        target = target_root / entry.name
+
+        def skip(reason: str) -> None:
+            result.skipped.append(SkippedSkill(name=entry.name, reason=reason))
+
+        if not target.exists():
+            skip("not-installed")
+            continue
+        manifest = target / "SKILL.md"
+        stamp = read_stamp(manifest.read_text()) if manifest.is_file() else None
+        if stamp is None:
+            skip("no agentsquire provenance stamp; not removing")
+            continue
+        if stamp.get("installer") != "agentsquire":
+            skip(f"stamped by installer {stamp.get('installer')!r}; not removing")
+            continue
+        if stamp.get("source_package") != source_package:
+            skip(
+                f"installed from package {stamp.get('source_package')!r},"
+                f" not {source_package!r}; not removing"
+            )
+            continue
+        shutil.rmtree(target)
+        result.removed.append(RemovedSkill(name=entry.name, path=target))
+    return result
