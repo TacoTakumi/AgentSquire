@@ -99,9 +99,35 @@ CLAUDE_CODE = HarnessBackend(
     project_marker_dirs=(".claude",),
 )
 
+PI = HarnessBackend(
+    name="pi",
+    user_skills_dir=".pi/agent/skills",
+    project_skills_dir=".pi/skills",
+    user_marker_dirs=(".pi",),
+    project_marker_dirs=(".pi",),
+)
+
+# Hermes has no per-project skills directory; project scope errors (see doc).
+HERMES = HarnessBackend(
+    name="hermes",
+    user_skills_dir=".hermes/skills",
+    user_marker_dirs=(".hermes",),
+)
+
+OPENCODE = HarnessBackend(
+    name="opencode",
+    user_skills_dir=".config/opencode/skills",
+    project_skills_dir=".opencode/skills",
+    user_marker_dirs=(".config/opencode", ".opencode"),
+    project_marker_dirs=(".opencode",),
+)
+
 
 def default_registry() -> HarnessRegistry:
     """A fresh registry with the launch backends registered."""
     registry = HarnessRegistry()
     registry.register(CLAUDE_CODE)
+    registry.register(PI)
+    registry.register(HERMES)
+    registry.register(OPENCODE)
     return registry
