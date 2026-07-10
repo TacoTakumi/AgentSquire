@@ -7,6 +7,7 @@ end-to-end against fixture harness dirs; --scope overrides the declared
 default; the library source names no consumer.
 """
 
+import inspect
 import re
 import sys
 from pathlib import Path
@@ -207,6 +208,55 @@ class TestFailures:
         assert result.exit_code != 0
         assert "broken" in result.output
         assert (home / ".claude" / "skills" / "alpha").is_dir()
+
+
+class TestCommandGroupInjection:
+    """REQ-08: keyword home/project params, resolved lazily in targets()."""
+
+    def test_command_group_signature_has_home_and_project_defaulting_none(self):
+        params = inspect.signature(skills_command_group).parameters
+        assert params["home"].default is None
+        assert params["project"].default is None
+
+    def test_command_group_with_injected_dirs_needs_no_monkeypatch_or_chdir(
+        self, consumer_package, tmp_path
+    ):
+        package, _ = consumer_package
+        home = tmp_path / "fixture_home"
+        project = tmp_path / "fixture_project"
+        (home / ".claude").mkdir(parents=True)
+        project.mkdir()
+
+        group = skills_command_group(
+            package, default_scope="user", home=home, project=project
+        )
+
+        result = invoke(group, "install")
+        assert result.exit_code == 0
+        assert (home / ".claude" / "skills" / "alpha" / "SKILL.md").exists()
+
+        result = invoke(group, "status")
+        assert result.exit_code == 0
+        assert "alpha" in result.output
+
+    def test_command_group_omitting_dirs_resolves_lazily_at_invocation(
+        self, consumer_package, tmp_path, monkeypatch
+    ):
+        package, _ = consumer_package
+        group = skills_command_group(package, default_scope="user")
+        # Path.home/cwd change only after the group is built: install must
+        # still land in them, proving targets() resolves per invocation.
+        home = tmp_path / "late_home"
+        project = tmp_path / "late_project"
+        (home / ".claude").mkdir(parents=True)
+        project.mkdir()
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+        monkeypatch.chdir(project)
+
+        result = invoke(group, "install")
+
+        assert result.exit_code == 0
+        assert (home / ".claude" / "skills" / "alpha" / "SKILL.md").exists()
 
 
 def test_library_source_names_no_consumer():

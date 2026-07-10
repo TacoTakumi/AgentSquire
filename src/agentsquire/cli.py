@@ -45,6 +45,8 @@ def skills_command_group(
     name: str = "skills",
     source_package: str | None = None,
     source_version: str | None = None,
+    home: Path | None = None,
+    project: Path | None = None,
 ) -> click.Group:
     """Build the mountable ``skills`` subcommand group for one consumer.
 
@@ -53,6 +55,9 @@ def skills_command_group(
     plain invocation uses (--scope overrides it, REQ-14). ``source_package``
     and ``source_version`` default to the package name and its installed
     distribution (or ``__version__``) and end up in the provenance stamp.
+    ``home`` and ``project`` point the group at explicit directories - tests
+    pass fixture paths; production omits them and each invocation resolves
+    the real ``Path.home()``/``Path.cwd()``.
     """
     source = BundledPackageDataSource(package, resource_path)
     src_pkg = source_package or package
@@ -74,18 +79,21 @@ def skills_command_group(
 
     def targets(harness: str | None):
         """(backends, home, project) for this invocation, or a clear error."""
-        home, project = Path.home(), Path.cwd()
+        target_home = home or Path.home()
+        target_project = project or Path.cwd()
         registry = default_registry()
         if harness is not None:
             try:
-                backends = [registry.resolve(harness, home=home, project=project)]
+                backends = [
+                    registry.resolve(harness, home=target_home, project=target_project)
+                ]
             except (UnknownHarnessError, HarnessNotDetectedError) as error:
                 raise click.ClickException(str(error)) from error
         else:
-            backends = registry.detect(home=home, project=project)
+            backends = registry.detect(home=target_home, project=target_project)
             if not backends:
                 raise click.ClickException("no supported harnesses detected")
-        return backends, home, project
+        return backends, target_home, target_project
 
     def run_on(backend, harness, invoke_verb):
         """One verb call on one backend. A scope the backend lacks is a clean
