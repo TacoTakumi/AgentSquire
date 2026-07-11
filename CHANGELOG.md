@@ -8,6 +8,17 @@ The version is declared in two places that are kept in sync by the release
 tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
 `pyproject.toml`.
 
+## [0.2.2]
+
+### Changed
+- **Source distributions now ship an explicit, minimal file set.** The sdist is
+  scoped with `[tool.hatch.build.targets.sdist]` to `src/`, `tests/`,
+  `CHANGELOG.md`, and the two public docs (`docs/api.md`, `docs/harnesses.md`),
+  plus the always-included `pyproject.toml`/`README.md`/`LICENSE`. Previously the
+  sdist inherited hatchling's default (every VCS-tracked file), so
+  repository-only files could ride along; the wheel was already limited to the
+  package. This is a default-deny allowlist - files not listed never ship.
+
 ## [0.2.1]
 
 ### Fixed

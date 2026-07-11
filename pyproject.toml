@@ -39,6 +39,20 @@ dev = [
     "typer>=0.26.8",
 ]
 
+[tool.hatch.build.targets.sdist]
+# Default-deny allowlist: only these paths ship in the source distribution.
+# hatchling always includes pyproject.toml, README.md, and LICENSE, so they are
+# not listed. Anything not matched here (CLAUDE.md, docs/projects, scripts/,
+# bugs.md, ...) never ships, regardless of what is tracked in the tree. The
+# wheel is already limited to the package (src/agentsquire) by default.
+include = [
+    "/src",
+    "/tests",
+    "/CHANGELOG.md",
+    "/docs/api.md",
+    "/docs/harnesses.md",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
