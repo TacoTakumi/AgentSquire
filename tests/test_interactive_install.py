@@ -12,8 +12,10 @@ from pathlib import Path
 
 import pytest
 import questionary
+from click.testing import CliRunner
 
-from agentsquire.cli import execute_install_plan
+import agentsquire.cli as cli
+from agentsquire.cli import execute_install_plan, skills_command_group
 from agentsquire.harnesses import CLAUDE_CODE, HERMES, PI, default_registry
 from agentsquire.interactive import gather_install_plan
 from agentsquire.sources import BundledPackageDataSource
@@ -86,6 +88,118 @@ def prepared(tmp_path, monkeypatch):
     project.mkdir()
     source = BundledPackageDataSource("fixture_consumer_pkg", "skills")
     return source, home, project
+
+
+@pytest.fixture
+def tty(monkeypatch):
+    """Force the install auto-gate on: interactive stdin, CI unset."""
+    monkeypatch.setattr(cli, "_stdin_is_interactive", lambda: True)
+    monkeypatch.delenv("CI", raising=False)
+
+
+def _group(home, project):
+    return skills_command_group(
+        "fixture_consumer_pkg", default_scope="user", home=home, project=project
+    )
+
+
+class TestInstallTtyGate:
+    """REQ-02/REQ-03/REQ-04/REQ-05: install prompts only on an interactive TTY
+    with no selection/control flag and CI unset; any explicit flag, a non-TTY,
+    or CI runs the non-interactive flag path with no prompt constructed."""
+
+    def test_bare_install_on_a_tty_launches_the_shared_front_end(
+        self, prepared, fake_questionary, tty
+    ):
+        _, home, project = prepared
+        fake = fake_questionary(checkbox=["claude-code"], scopes=["user"], confirm=True)
+
+        result = CliRunner().invoke(
+            _group(home, project), ["install"], catch_exceptions=False
+        )
+
+        assert result.exit_code == 0, result.output
+        assert [call[0] for call in fake.calls] == ["checkbox", "select", "confirm"]
+        assert (home / ".claude" / "skills" / "alpha").is_dir()
+
+    def test_non_tty_runs_the_flag_path_with_no_prompt(
+        self, prepared, fake_questionary, monkeypatch
+    ):
+        _, home, project = prepared
+        monkeypatch.setattr(cli, "_stdin_is_interactive", lambda: False)
+        monkeypatch.delenv("CI", raising=False)
+        fake = fake_questionary(checkbox=["claude-code"], scopes=["user"], confirm=True)
+
+        result = CliRunner().invoke(
+            _group(home, project), ["install"], catch_exceptions=False
+        )
+
+        assert result.exit_code == 0, result.output
+        assert fake.calls == []  # no prompt constructed
+        # flag path: every detected harness at the default user scope
+        assert (home / ".claude" / "skills" / "alpha").is_dir()
+        assert (home / ".pi" / "agent" / "skills" / "alpha").is_dir()
+
+    def test_ci_env_disables_the_tui(self, prepared, fake_questionary, monkeypatch):
+        _, home, project = prepared
+        monkeypatch.setattr(cli, "_stdin_is_interactive", lambda: True)
+        monkeypatch.setenv("CI", "true")
+        fake = fake_questionary(checkbox=["claude-code"], scopes=["user"], confirm=True)
+
+        result = CliRunner().invoke(
+            _group(home, project), ["install"], catch_exceptions=False
+        )
+
+        assert result.exit_code == 0, result.output
+        assert fake.calls == []
+
+    def test_explicit_scope_equal_to_default_still_disables_the_tui(
+        self, prepared, fake_questionary, tty
+    ):
+        _, home, project = prepared
+        fake = fake_questionary(checkbox=["claude-code"], scopes=["user"], confirm=True)
+
+        result = CliRunner().invoke(
+            _group(home, project), ["install", "--scope", "user"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0, result.output
+        assert fake.calls == []  # detected via parameter source, not truthiness
+
+    def test_explicit_harness_disables_the_tui(self, prepared, fake_questionary, tty):
+        _, home, project = prepared
+        fake = fake_questionary(checkbox=["claude-code"], scopes=["user"], confirm=True)
+
+        result = CliRunner().invoke(
+            _group(home, project), ["install", "--harness", "claude-code"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0, result.output
+        assert fake.calls == []
+
+    @pytest.mark.parametrize("flag", ["--no-input", "-y"])
+    def test_control_flags_disable_the_tui(
+        self, prepared, fake_questionary, tty, flag
+    ):
+        _, home, project = prepared
+        fake = fake_questionary(checkbox=["claude-code"], scopes=["user"], confirm=True)
+
+        result = CliRunner().invoke(
+            _group(home, project), ["install", flag], catch_exceptions=False
+        )
+
+        assert result.exit_code == 0, result.output
+        assert fake.calls == []
+
+    def test_help_lists_the_control_flags(self, prepared):
+        _, home, project = prepared
+
+        result = CliRunner().invoke(_group(home, project), ["install", "--help"])
+
+        assert "--no-input" in result.output
+        assert "--yes" in result.output and "-y" in result.output
 
 
 def test_prompts_in_order_and_returns_the_confirmed_plan(fake_questionary):

@@ -11,6 +11,16 @@ tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
 ## [0.4.0]
 
 ### Added
+- **Interactive `skills install`.** On an interactive terminal, a bare
+  `<consumer> skills install` now prompts: a checkbox of the detected
+  harnesses, then a per-harness scope select (a harness with only one scope,
+  e.g. hermes, is never offered an impossible choice), then a confirm summary
+  listing every `(harness, scope)` pair before anything is written. It ships
+  inside the mountable `skills_command_group`, so every consumer gets it with
+  no extra code. The prompt is launched only when stdin is an interactive TTY,
+  `CI` is unset, and none of `--harness`, `--scope`, `-y/--yes`, or
+  `--no-input` was passed - agents and scripts always run non-interactively.
+  New `--no-input` (force non-interactive) and `-y/--yes` (assume yes) flags.
 - **`--harness` is now repeatable with an optional `:scope` suffix across all
   four verbs (install, status, update, uninstall).** `install --harness
   claude-code:project --harness pi` operates on that subset, each at its own
@@ -21,8 +31,10 @@ tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
   satisfy (e.g. `hermes:project`) each fail with a named error and write
   nothing - a multi-target plan never partially installs.
 - **`questionary` is now a hard runtime dependency.** It backs the interactive
-  skill installer (in progress); a base install pulls it in with no extras, so
-  the interactive path always imports with no optional-import branching.
+  skill installer; a base install pulls it in with no extras, so the
+  interactive path always imports with no optional-import branching. It is
+  imported only in the interactive front-end module, so a non-interactive or
+  CI invocation never loads a terminal-UI library.
 
 ### Changed
 - **install now resolves to an explicit `(harness, scope)` plan run by one

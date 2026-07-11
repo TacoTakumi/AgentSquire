@@ -12,10 +12,13 @@ from __future__ import annotations
 
 import importlib
 import importlib.metadata
+import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 import click
+from click.core import ParameterSource
 
 from agentsquire.harnesses import (
     SCOPES,
@@ -120,6 +123,33 @@ def execute_install_plan(
             click.echo(f"invalid skill {violation.message}", err=True)
         outcomes.append(InstallOutcome(target=target, result=result))
     return PlanExecution(outcomes=outcomes)
+
+
+def _stdin_is_interactive() -> bool:
+    """Whether stdin is an interactive TTY. A thin, monkeypatchable wrapper so
+    the auto-gate can be exercised in tests without a real terminal (REQ-17)."""
+    try:
+        return sys.stdin.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
+def _install_is_interactive(ctx, harnesses, assume_yes, no_input) -> bool:
+    """Whether ``install`` should launch the interactive TUI (REQ-03, REQ-04).
+
+    Only on an interactive TTY with none of --harness/--scope/-y/--no-input
+    explicitly passed and no CI marker set. Explicitness of --scope is read from
+    click's parameter source, so ``--scope user`` (equal to the default) still
+    disables the TUI; any explicit flag, a non-TTY stdin, or a set CI variable
+    runs the non-interactive flag path and constructs no prompt.
+    """
+    if no_input or assume_yes or harnesses:
+        return False
+    if ctx.get_parameter_source("scope") == ParameterSource.COMMANDLINE:
+        return False
+    if os.environ.get("CI"):
+        return False
+    return _stdin_is_interactive()
 
 
 def skills_command_group(
@@ -232,9 +262,44 @@ def skills_command_group(
     @group.command("install")
     @scope_option
     @harness_multi_option
+    @click.option(
+        "--no-input", is_flag=True, help="Never prompt; run non-interactively."
+    )
+    @click.option(
+        "-y", "--yes", "assume_yes", is_flag=True,
+        help="Assume yes to any confirmation.",
+    )
     @click.pass_context
-    def install(ctx, scope, harnesses):
-        """Install bundled skills into detected harnesses."""
+    def install(ctx, scope, harnesses, no_input, assume_yes):
+        """Install bundled skills into detected harnesses.
+
+        On an interactive terminal with no selection or control flag, prompts
+        for which harnesses and scopes to install into; otherwise installs into
+        the flag-selected targets (default: all detected at --scope).
+        """
+        if _install_is_interactive(ctx, harnesses, assume_yes, no_input):
+            # Lazy import keeps questionary/prompt_toolkit out of a plain
+            # ``import agentsquire.cli`` — they load only when actually
+            # prompting (REQ-16).
+            from agentsquire.interactive import gather_install_plan
+
+            target_home, target_project = resolve_roots(home, project)
+            backends = default_registry().detect(
+                home=target_home, project=target_project
+            )
+            if not backends:
+                raise click.ClickException("no supported harnesses detected")
+            plan = gather_install_plan(backends, default_scope=scope)
+            if plan is None:
+                ctx.exit(1)  # cancelled (T-08 adds the notice)
+            if plan:
+                execution = execute_install_plan(
+                    source, plan, home=target_home, project=target_project,
+                    source_package=src_pkg, source_version=src_version,
+                )
+                if not execution.ok:
+                    ctx.exit(1)
+            return
         plan, plan_home, plan_project = build_plan(harnesses, scope)
         execution = execute_install_plan(
             source, plan, home=plan_home, project=plan_project,
