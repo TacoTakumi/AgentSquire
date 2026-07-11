@@ -36,7 +36,7 @@ from agentsquire.verbs import install as install_verb
 from agentsquire.verbs import status as status_verb
 from agentsquire.verbs import uninstall as uninstall_verb
 from agentsquire.verbs import update as update_verb
-from agentsquire.sources import SkillSource, default_source
+from agentsquire.sources import DuplicateSkillError, SkillSource, default_source
 
 
 def _consumer_version(package: str, source_package: str) -> str:
@@ -243,6 +243,19 @@ def _should_prompt(ctx, harnesses, assume_yes=False, no_input=False) -> bool:
     return _stdin_is_interactive()
 
 
+class _SkillsGroup(click.Group):
+    """A skills command group that surfaces a source's ``DuplicateSkillError``
+    as a clean, named command failure (REQ-04): the collision is caught around
+    every verb's execution and re-raised as a ``ClickException``, so the user
+    sees a human-readable message and a non-zero exit, never a traceback."""
+
+    def invoke(self, ctx):
+        try:
+            return super().invoke(ctx)
+        except DuplicateSkillError as error:
+            raise click.ClickException(str(error)) from error
+
+
 def skills_command_group(
     package: str,
     resource_path: str = "skills",
@@ -353,7 +366,7 @@ def skills_command_group(
             click.echo(f"skipped {target.backend.name}: {error}", err=True)
             return None
 
-    group = click.Group(name=name, help="Manage this package's bundled agent skills.")
+    group = _SkillsGroup(name=name, help="Manage this package's bundled agent skills.")
 
     @group.command("install")
     @scope_option
