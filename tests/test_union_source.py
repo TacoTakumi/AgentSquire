@@ -1,0 +1,80 @@
+"""UnionSource: disjoint N-root merge over the SkillSource seam (REQ-01, REQ-02, REQ-05).
+
+A UnionSource composes any number of member sources into one, listing the union
+of their skills (each carrying its owning source's content hash) and delegating
+materialize() to the member that owns a given name. Roots are disjoint by
+construction; a name in two roots is a packaging mistake handled separately.
+"""
+
+from pathlib import Path
+
+import pytest
+
+from agentsquire.sources import DirectorySource, SkillSource, SourceSkill, UnionSource
+
+
+def write_skill(root: Path, name: str, body: str = "body") -> None:
+    skill = root / name
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        f"---\nname: {name}\ndescription: A fixture skill.\n---\n\n{body}\n"
+    )
+
+
+def make_source(tmp_path: Path, label: str, names: list[str]) -> DirectorySource:
+    root = tmp_path / label
+    root.mkdir()
+    for name in names:
+        write_skill(root, name, body=f"{label}:{name}")
+    return DirectorySource(root)
+
+
+def test_union_satisfies_the_protocol(tmp_path):
+    union = UnionSource([make_source(tmp_path, "a", ["alpha"])])
+    assert isinstance(union, SkillSource)
+
+
+def test_lists_the_disjoint_union_with_owning_hashes(tmp_path):
+    left = make_source(tmp_path, "left", ["a", "b"])
+    right = make_source(tmp_path, "right", ["c", "d"])
+    union = UnionSource([left, right])
+
+    listed = union.list_skills()
+    assert isinstance(listed[0], SourceSkill)
+    assert sorted(s.name for s in listed) == ["a", "b", "c", "d"]
+
+    by_name = {s.name: s.content_hash for s in listed}
+    owning = {s.name: s.content_hash for s in left.list_skills() + right.list_skills()}
+    assert by_name == owning
+
+
+def test_materialize_delegates_to_the_owning_member(tmp_path):
+    left = make_source(tmp_path, "left", ["a", "b"])
+    right = make_source(tmp_path, "right", ["c", "d"])
+    union = UnionSource([left, right])
+
+    with union.materialize("c") as path:
+        with right.materialize("c") as expected:
+            got = {p.name: p.read_bytes() for p in path.iterdir()}
+            want = {p.name: p.read_bytes() for p in expected.iterdir()}
+    assert got == want
+
+
+def test_materialize_unknown_name_raises_keyerror(tmp_path):
+    union = UnionSource(
+        [make_source(tmp_path, "left", ["a"]), make_source(tmp_path, "right", ["b"])]
+    )
+    with pytest.raises(KeyError):
+        with union.materialize("nope"):
+            pass
+
+
+def test_union_is_n_root_over_three_members(tmp_path):
+    union = UnionSource(
+        [
+            make_source(tmp_path, "one", ["a"]),
+            make_source(tmp_path, "two", ["b"]),
+            make_source(tmp_path, "three", ["c"]),
+        ]
+    )
+    assert sorted(s.name for s in union.list_skills()) == ["a", "b", "c"]
