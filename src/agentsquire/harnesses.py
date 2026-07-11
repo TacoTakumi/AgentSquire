@@ -65,6 +65,13 @@ class HarnessBackend:
         root = home if scope == "user" else project
         return root / relative
 
+    def supported_scopes(self) -> list[str]:
+        """The scopes this backend has a skills directory for, in canonical
+        order. A harness with only one (e.g. hermes: user only) yields just it,
+        so callers never offer or scan an impossible scope."""
+        relative = {"user": self.user_skills_dir, "project": self.project_skills_dir}
+        return [scope for scope in SCOPES if relative[scope] is not None]
+
     def detect(self, *, home: Path, project: Path) -> bool:
         return any((home / marker).is_dir() for marker in self.user_marker_dirs) or any(
             (project / marker).is_dir() for marker in self.project_marker_dirs

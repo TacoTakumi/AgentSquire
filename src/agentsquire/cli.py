@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib
 import importlib.metadata
 import os
+import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +30,7 @@ from agentsquire.harnesses import (
     default_registry,
 )
 from agentsquire.roots import resolve_roots
+from agentsquire.stamping import read_stamp
 from agentsquire.verbs import InstallResult
 from agentsquire.verbs import install as install_verb
 from agentsquire.verbs import status as status_verb
@@ -125,6 +127,86 @@ def execute_install_plan(
     return PlanExecution(outcomes=outcomes)
 
 
+@dataclass(frozen=True)
+class RemovableSkill:
+    """One installed-and-ours skill directory: our provenance stamp names both
+    ``agentsquire`` as installer and the consumer as source package. The unit of
+    the interactive uninstall picker (REQ-22)."""
+
+    name: str
+    backend: HarnessBackend
+    scope: str
+    path: Path
+
+
+def _is_ours(manifest_text: str, source_package: str) -> bool:
+    """Whether a SKILL.md's provenance stamp marks it installed by us for this
+    consumer — the same ownership test the uninstall verb applies (REQ-13)."""
+    stamp = read_stamp(manifest_text)
+    return (
+        stamp is not None
+        and stamp.get("installer") == "agentsquire"
+        and stamp.get("source_package") == source_package
+    )
+
+
+def installed_and_ours(
+    backends: list[HarnessBackend],
+    *,
+    source_package: str,
+    home: Path,
+    project: Path,
+) -> list[RemovableSkill]:
+    """Every installed-and-ours skill across the detected harnesses and each of
+    their scopes, read from on-disk provenance stamps (REQ-22).
+
+    Enumerates the actual skill directories on disk — not the source's skill
+    list — so what is offered is exactly what is installed and stamped as ours;
+    unstamped and foreign-stamped directories (and symlinks) are omitted.
+    """
+    found: list[RemovableSkill] = []
+    for backend in backends:
+        for scope in backend.supported_scopes():
+            root = backend.skills_dir(scope, home=home, project=project)
+            if not root.is_dir():
+                continue
+            for child in sorted(root.iterdir()):
+                if child.is_symlink() or not child.is_dir():
+                    continue
+                manifest = child / "SKILL.md"
+                if manifest.is_file() and _is_ours(manifest.read_text(), source_package):
+                    found.append(
+                        RemovableSkill(
+                            name=child.name, backend=backend, scope=scope, path=child
+                        )
+                    )
+    return found
+
+
+def execute_uninstall_plan(
+    entries: list[RemovableSkill], *, source_package: str
+) -> list[RemovableSkill]:
+    """Remove exactly the selected installed-and-ours entries, re-checking each
+    stamp immediately before deletion so a directory that changed hands since it
+    was enumerated is left in place. Returns the entries actually removed."""
+    removed: list[RemovableSkill] = []
+    for entry in entries:
+        manifest = entry.path / "SKILL.md"
+        if entry.path.is_symlink() or not (
+            manifest.is_file() and _is_ours(manifest.read_text(), source_package)
+        ):
+            click.echo(
+                f"skipped {entry.name}: no longer ours "
+                f"({entry.backend.name}/{entry.scope})",
+                err=True,
+            )
+            continue
+        shutil.rmtree(entry.path)
+        click.echo(f"removed {entry.name} ({entry.backend.name}/{entry.scope})")
+        removed.append(entry)
+    return removed
+
+
 def _stdin_is_interactive() -> bool:
     """Whether stdin is an interactive TTY. A thin, monkeypatchable wrapper so
     the auto-gate can be exercised in tests without a real terminal (REQ-17)."""
@@ -134,14 +216,16 @@ def _stdin_is_interactive() -> bool:
         return False
 
 
-def _install_is_interactive(ctx, harnesses, assume_yes, no_input) -> bool:
-    """Whether ``install`` should launch the interactive TUI (REQ-03, REQ-04).
+def _should_prompt(ctx, harnesses, assume_yes=False, no_input=False) -> bool:
+    """Whether a verb should launch its interactive TUI (REQ-03, REQ-04).
 
     Only on an interactive TTY with none of --harness/--scope/-y/--no-input
     explicitly passed and no CI marker set. Explicitness of --scope is read from
     click's parameter source, so ``--scope user`` (equal to the default) still
     disables the TUI; any explicit flag, a non-TTY stdin, or a set CI variable
-    runs the non-interactive flag path and constructs no prompt.
+    runs the non-interactive flag path and constructs no prompt. Shared by
+    install and uninstall; ``assume_yes``/``no_input`` default off for verbs
+    that do not (yet) expose those flags.
     """
     if no_input or assume_yes or harnesses:
         return False
@@ -277,7 +361,7 @@ def skills_command_group(
         for which harnesses and scopes to install into; otherwise installs into
         the flag-selected targets (default: all detected at --scope).
         """
-        if _install_is_interactive(ctx, harnesses, assume_yes, no_input):
+        if _should_prompt(ctx, harnesses, assume_yes, no_input):
             # Lazy import keeps questionary/prompt_toolkit out of a plain
             # ``import agentsquire.cli`` — they load only when actually
             # prompting (REQ-16).
@@ -362,13 +446,43 @@ def skills_command_group(
     @group.command("uninstall")
     @scope_option
     @harness_multi_option
-    def uninstall(scope, harnesses):
-        """Remove installed skills this package's stamp owns."""
-        plan, home, project = build_plan(harnesses, scope)
+    @click.pass_context
+    def uninstall(ctx, scope, harnesses):
+        """Remove installed skills this package's stamp owns.
+
+        On an interactive terminal with no selection flag, lists the
+        installed-and-ours skills across all detected harnesses and scopes and
+        lets you pick which to remove; otherwise removes them over the
+        flag-selected targets (default: all detected at --scope).
+        """
+        if _should_prompt(ctx, harnesses):
+            from agentsquire.interactive import gather_uninstall_plan
+
+            target_home, target_project = resolve_roots(home, project)
+            backends = default_registry().detect(
+                home=target_home, project=target_project
+            )
+            entries = installed_and_ours(
+                backends, source_package=src_pkg,
+                home=target_home, project=target_project,
+            )
+            if not entries:
+                click.echo("Nothing installed by this package to uninstall.")
+                return
+            selection = gather_uninstall_plan(entries)
+            if selection is None:
+                click.echo("Aborted; nothing was changed.", err=True)
+                ctx.exit(1)
+            if not selection:
+                click.echo("Nothing selected; nothing to uninstall.")
+                return
+            execute_uninstall_plan(selection, source_package=src_pkg)
+            return
+        plan, home_, project_ = build_plan(harnesses, scope)
         for target in plan:
             backend = target.backend
             result = run_target(target, lambda: uninstall_verb(
-                source, backend, scope=target.scope, home=home, project=project,
+                source, backend, scope=target.scope, home=home_, project=project_,
                 source_package=src_pkg,
             ))
             if result is None:
