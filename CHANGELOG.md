@@ -11,6 +11,13 @@ tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
 ## [0.4.0]
 
 ### Added
+- **Interactive `skills uninstall`.** On an interactive terminal, a bare
+  `<consumer> skills uninstall` lists exactly the installed-and-ours skills -
+  enumerated from on-disk provenance stamps across every detected harness and
+  scope, so unstamped and foreign-stamped directories are never offered - then
+  removes the subset you pick (after a destructive confirm). It re-checks each
+  stamp immediately before deleting, and is gated by the same TTY/CI/explicit-
+  flag rules as install.
 - **Interactive `skills install`.** On an interactive terminal, a bare
   `<consumer> skills install` now prompts: a checkbox of the detected
   harnesses, then a per-harness scope select (a harness with only one scope,

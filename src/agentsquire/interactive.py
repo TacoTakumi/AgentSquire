@@ -17,23 +17,12 @@ from __future__ import annotations
 
 import questionary
 
-from agentsquire.cli import HarnessTarget
-from agentsquire.harnesses import SCOPES, HarnessBackend
+from agentsquire.cli import HarnessTarget, RemovableSkill
+from agentsquire.harnesses import HarnessBackend
 
 # Friendly labels for the scope keys; the label carries both the harness term
 # and the scope value so the choice reads well and stays greppable.
 _SCOPE_LABELS = {"user": "Global (user)", "project": "Local (project)"}
-
-
-def _supported_scopes(backend: HarnessBackend) -> list[str]:
-    """The scopes this backend actually has a skills directory for, in canonical
-    order. A harness that supports only one (e.g. hermes: user only) yields just
-    that one, so it is never offered an impossible choice (REQ-08)."""
-    return [
-        scope
-        for scope in SCOPES
-        if getattr(backend, f"{scope}_skills_dir") is not None
-    ]
 
 
 def _confirm_summary(plan: list[HarnessTarget]) -> str:
@@ -69,7 +58,7 @@ def gather_install_plan(
     plan: list[HarnessTarget] = []
     for name in chosen:
         backend = by_name[name]
-        supported = _supported_scopes(backend)
+        supported = backend.supported_scopes()
         scope = questionary.select(
             f"Scope for {backend.name}?",
             choices=[
@@ -88,3 +77,47 @@ def gather_install_plan(
     if not answer:
         return []  # declined — a clean no-op
     return plan
+
+
+def _entry_label(entry: RemovableSkill) -> str:
+    """One picker row / summary line for an installed-and-ours skill."""
+    return f"{entry.name} ({entry.backend.name}/{entry.scope})"
+
+
+def _uninstall_summary(entries: list[RemovableSkill]) -> str:
+    """The destructive confirm text: one line per skill to be removed."""
+    lines = ["Remove these skills:"]
+    lines += [f"  - {_entry_label(entry)}" for entry in entries]
+    lines.append("This deletes the installed directories. Proceed?")
+    return "\n".join(lines)
+
+
+def gather_uninstall_plan(
+    entries: list[RemovableSkill],
+) -> list[RemovableSkill] | None:
+    """Prompt for which installed-and-ours skills to remove (REQ-22).
+
+    ``entries`` is the enumerated installed-and-ours set. Returns the selected
+    subset once confirmed (a non-empty list); an empty list when nothing was
+    selected or the confirm was declined (a clean no-op); or ``None`` when the
+    user cancelled a prompt (an abort). Only gathers — never deletes.
+    """
+    chosen = questionary.checkbox(
+        "Uninstall which skills?",
+        choices=[
+            questionary.Choice(title=_entry_label(entry), value=index)
+            for index, entry in enumerate(entries)
+        ],
+    ).ask()
+    if chosen is None:
+        return None  # cancelled at the checkbox
+    if not chosen:
+        return []  # nothing selected — a clean no-op
+
+    selection = [entries[index] for index in chosen]
+    answer = questionary.confirm(_uninstall_summary(selection)).ask()
+    if answer is None:
+        return None  # cancelled at the confirm
+    if not answer:
+        return []  # declined — a clean no-op
+    return selection
