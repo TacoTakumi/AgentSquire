@@ -111,23 +111,55 @@ class BundledPackageDataSource:
             yield target
 
 
+class DuplicateSkillError(Exception):
+    """A skill name is provided by more than one member of a UnionSource.
+
+    A collision across roots is always a packaging mistake, never a legitimate
+    override — so it is a hard error naming the colliding skill and both roots,
+    never namespaced or silently first-wins.
+    """
+
+
+def _source_label(source) -> str:
+    """Best-effort human identifier for a source's backing root."""
+    root = getattr(source, "root", None)
+    if root is not None:
+        return str(root)
+    package = getattr(source, "package", None)
+    if package is not None:
+        resource = getattr(source, "resource_path", "") or ""
+        return f"{package}/{resource}".rstrip("/")
+    return repr(source)
+
+
 class UnionSource:
     """Disjoint N-root merge of member sources over the ``SkillSource`` seam.
 
     ``list_skills()`` returns the union of the members' skills, each carrying
     the content hash its owning member reports; ``materialize(name)`` delegates
     to the member that provides that name. Roots are disjoint by construction —
-    a name in more than one member is a packaging mistake, not an override.
+    a name in more than one member raises ``DuplicateSkillError``, never an
+    override.
     """
 
     def __init__(self, sources: list):
         self.sources = list(sources)
 
     def _owners(self) -> dict:
-        """Map each skill name to the (source, SourceSkill) that provides it."""
+        """Map each skill name to the (source, SourceSkill) that provides it.
+
+        Raises ``DuplicateSkillError`` naming the colliding skill and both
+        owning roots if any name is provided by more than one member.
+        """
         owners: dict[str, tuple] = {}
         for source in self.sources:
             for skill in source.list_skills():
+                if skill.name in owners:
+                    first, _ = owners[skill.name]
+                    raise DuplicateSkillError(
+                        f"skill {skill.name!r} is provided by more than one root: "
+                        f"{_source_label(first)} and {_source_label(source)}"
+                    )
                 owners[skill.name] = (source, skill)
         return owners
 

@@ -32,6 +32,7 @@ from agentsquire.sources import (
     ENTRY_POINT_GROUP,
     BundledPackageDataSource,
     DirectorySource,
+    DuplicateSkillError,
     SkillSource,
     SourceSkill,
     UnionSource,
@@ -72,6 +73,7 @@ __all__ = [
     "DirectorySource",
     "BundledPackageDataSource",
     "UnionSource",
+    "DuplicateSkillError",
     "ENTRY_POINT_GROUP",
     # harnesses (detect)
     "HarnessBackend",
