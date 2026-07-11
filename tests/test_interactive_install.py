@@ -105,6 +105,25 @@ def bare(tmp_path, monkeypatch):
     return home, project
 
 
+@pytest.fixture(autouse=True)
+def forbid_real_tty(monkeypatch):
+    """REQ-17: no install test may enter a real prompt_toolkit application.
+
+    Every interactive test drives questionary through canned fakes; this guard
+    turns any un-stubbed prompt into a loud failure instead of a hang on a TTY
+    that is not there. The whole suite passing with this active is the audit.
+    """
+    import prompt_toolkit
+
+    def _entered(*args, **kwargs):
+        raise AssertionError(
+            "a real prompt_toolkit prompt was entered under test: an interactive "
+            "path was reached without monkeypatching questionary"
+        )
+
+    monkeypatch.setattr(prompt_toolkit.Application, "run", _entered)
+
+
 @pytest.fixture
 def tty(monkeypatch):
     """Force the install auto-gate on: interactive stdin, CI unset."""
@@ -365,6 +384,48 @@ def _module_imports(filename: str) -> set[str]:
         elif isinstance(node, ast.ImportFrom) and node.module:
             names.add(node.module.split(".")[0])
     return names
+
+
+class TestNoRealTtyCapstone:
+    """REQ-17: both install paths are exercisable with no real TTY — the flag
+    path via CliRunner with injected roots, the interactive path via canned
+    questionary — and the ``forbid_real_tty`` guard proves the suite never
+    depends on an actual terminal."""
+
+    def test_flag_path_runs_fully_headless(self, prepared, monkeypatch):
+        _, home, project = prepared
+        monkeypatch.setattr(cli, "_stdin_is_interactive", lambda: False)
+        monkeypatch.delenv("CI", raising=False)
+
+        result = CliRunner().invoke(
+            _group(home, project), ["install"], catch_exceptions=False
+        )
+
+        assert result.exit_code == 0, result.output
+        assert (home / ".claude" / "skills" / "alpha").is_dir()
+
+    def test_interactive_path_runs_with_canned_questionary(
+        self, prepared, fake_questionary, tty
+    ):
+        _, home, project = prepared
+        fake_questionary(checkbox=["claude-code"], scopes=["user"], confirm=True)
+
+        result = CliRunner().invoke(
+            _group(home, project), ["install"], catch_exceptions=False
+        )
+
+        assert result.exit_code == 0, result.output
+        assert (home / ".claude" / "skills" / "alpha").is_dir()
+
+    def test_reaching_the_prompt_unstubbed_is_caught_not_hung(self, prepared, tty):
+        """With the gate on but questionary NOT stubbed, install would enter a
+        real prompt — the guard raises instead of blocking on a missing TTY."""
+        _, home, project = prepared
+
+        with pytest.raises(AssertionError, match="real prompt_toolkit prompt"):
+            CliRunner().invoke(
+                _group(home, project), ["install"], catch_exceptions=False
+            )
 
 
 def test_questionary_is_imported_only_in_the_front_end_module():
