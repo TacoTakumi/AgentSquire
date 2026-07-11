@@ -160,6 +160,47 @@ def skills_command_group(
         metavar="NAME",
         help="Operate on one harness (default: all detected).",
     )
+    harness_multi_option = click.option(
+        "--harness",
+        "harnesses",
+        multiple=True,
+        metavar="NAME[:SCOPE]",
+        help="Install into this harness; repeatable, with an optional :scope "
+        "suffix (default: all detected at --scope).",
+    )
+
+    def build_install_plan(harness_specs: tuple[str, ...], scope: str):
+        """Resolve the repeatable --harness specs into an (plan, home, project).
+
+        No specs keeps today's meaning — every detected harness at the top-level
+        ``scope`` (REQ-11). Each ``NAME[:scope]`` spec selects one harness at its
+        suffix scope, or the top-level ``scope`` when the suffix is omitted
+        (REQ-10); a named-but-unresolvable harness is a clean error.
+        """
+        target_home, target_project = resolve_roots(home, project)
+        registry = default_registry()
+        if not harness_specs:
+            backends = registry.detect(home=target_home, project=target_project)
+            if not backends:
+                raise click.ClickException("no supported harnesses detected")
+            plan = [
+                InstallTarget(backend=backend, scope=scope, explicit=False)
+                for backend in backends
+            ]
+            return plan, target_home, target_project
+        plan = []
+        for spec in harness_specs:
+            name, _, suffix = spec.partition(":")
+            try:
+                backend = registry.resolve(
+                    name, home=target_home, project=target_project
+                )
+            except (UnknownHarnessError, HarnessNotDetectedError) as error:
+                raise click.ClickException(str(error)) from error
+            plan.append(
+                InstallTarget(backend=backend, scope=suffix or scope, explicit=True)
+            )
+        return plan, target_home, target_project
 
     def targets(harness: str | None):
         """(backends, home, project) for this invocation, or a clear error."""
@@ -194,17 +235,13 @@ def skills_command_group(
 
     @group.command("install")
     @scope_option
-    @harness_option
+    @harness_multi_option
     @click.pass_context
-    def install(ctx, scope, harness):
+    def install(ctx, scope, harnesses):
         """Install bundled skills into detected harnesses."""
-        backends, home, project = targets(harness)
-        plan = [
-            InstallTarget(backend=backend, scope=scope, explicit=harness is not None)
-            for backend in backends
-        ]
+        plan, plan_home, plan_project = build_install_plan(harnesses, scope)
         execution = execute_install_plan(
-            source, plan, home=home, project=project,
+            source, plan, home=plan_home, project=plan_project,
             source_package=src_pkg, source_version=src_version,
         )
         if not execution.ok:

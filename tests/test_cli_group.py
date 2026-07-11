@@ -202,6 +202,52 @@ class TestHarnessSelection:
         assert "no project-scope skills directory" in result.output
 
 
+class TestRepeatableHarnessInstall:
+    """REQ-10/REQ-11: --harness is repeatable with an optional :scope suffix;
+    subset selection with per-target scope, omit = all detected at --scope."""
+
+    def test_repeatable_harness_with_per_target_scope(self, click_consumer, env):
+        home, project = env
+        (home / ".pi").mkdir()  # detect pi alongside claude-code
+
+        result = invoke(
+            click_consumer, "skills", "install",
+            "--harness", "claude-code:project", "--harness", "pi",
+        )
+
+        assert result.exit_code == 0, result.output
+        # claude-code installed at its :project suffix scope, not the default user
+        assert (project / ".claude" / "skills" / "alpha").is_dir()
+        assert not (home / ".claude" / "skills" / "alpha").exists()
+        # pi installed at the top-level default (user) scope
+        assert (home / ".pi" / "agent" / "skills" / "alpha").is_dir()
+        assert not (project / ".pi" / "skills" / "alpha").exists()
+
+    def test_single_harness_no_suffix_targets_only_that_harness(
+        self, click_consumer, env
+    ):
+        home, project = env
+        (home / ".pi").mkdir()
+
+        result = invoke(click_consumer, "skills", "install", "--harness", "claude-code")
+
+        assert result.exit_code == 0, result.output
+        assert (home / ".claude" / "skills" / "alpha").is_dir()
+        assert not (home / ".pi" / "agent" / "skills" / "alpha").exists()
+
+    def test_omitting_harness_installs_all_detected_at_scope(
+        self, click_consumer, env
+    ):
+        home, project = env
+        (home / ".pi").mkdir()
+
+        result = invoke(click_consumer, "skills", "install")
+
+        assert result.exit_code == 0, result.output
+        assert (home / ".claude" / "skills" / "alpha").is_dir()
+        assert (home / ".pi" / "agent" / "skills" / "alpha").is_dir()
+
+
 class TestFailures:
     def test_invalid_bundled_skill_exits_nonzero_and_valid_still_installs(
         self, click_consumer, consumer_package, env
