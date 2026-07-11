@@ -59,6 +59,7 @@ dev = [
 include = [
     "/src",
     "/tests",
+    "/skills",
     "/CHANGELOG.md",
     "/docs/api.md",
     "/docs/harnesses.md",
@@ -72,6 +73,10 @@ include = [
 "docs/api.md" = "agentsquire/_docs/api.md"
 "docs/harnesses.md" = "agentsquire/_docs/harnesses.md"
 "README.md" = "agentsquire/_docs/integration.md"
+# agentsquire dogfoods its own Root B recipe: the repo-level skills/ dir ships to
+# the fixed in-package location, seeded with a .gitkeep so the (currently empty)
+# root ships and lists zero skills. developing-with-agentsquire stays in Root A.
+"skills" = "agentsquire/_repo_skills"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
