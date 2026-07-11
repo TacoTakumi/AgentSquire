@@ -21,7 +21,7 @@ import typer.main
 from click.testing import CliRunner
 
 from agentsquire.cli import (
-    InstallTarget,
+    HarnessTarget,
     _consumer_version,
     execute_install_plan,
     skills_command_group,
@@ -313,6 +313,79 @@ class TestInstallTargetErrors:
         assert not (home / ".claude" / "skills" / "alpha").exists()
 
 
+class TestRepeatableHarnessAcrossVerbs:
+    """REQ-14: repeatable --harness NAME[:scope] resolves the same way for
+    status, update, and uninstall as it does for install."""
+
+    def test_status_subset_and_per_target_scope(self, click_consumer, env):
+        home, _ = env
+        (home / ".pi").mkdir()
+
+        result = invoke(
+            click_consumer, "skills", "status",
+            "--harness", "claude-code:project", "--harness", "pi",
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "(claude-code/project)" in result.output
+        assert "(pi/user)" in result.output
+
+    def test_status_unknown_harness_errors(self, click_consumer, env):
+        result = invoke(click_consumer, "skills", "status", "--harness", "bogus")
+
+        assert result.exit_code != 0
+        assert "unknown harness" in result.output
+
+    def test_update_targets_the_suffix_scope(
+        self, click_consumer, consumer_package, env
+    ):
+        _, pkg = consumer_package
+        _, project = env
+        assert invoke(
+            click_consumer, "skills", "install", "--harness", "claude-code:project"
+        ).exit_code == 0
+        installed = project / ".claude" / "skills" / "alpha"
+        assert installed.is_dir()
+        (pkg / "skills" / "alpha" / "reference.md").write_text("v2\n")
+
+        result = invoke(
+            click_consumer, "skills", "update", "--harness", "claude-code:project"
+        )
+
+        assert result.exit_code == 0, result.output
+        assert (installed / "reference.md").read_text() == "v2\n"
+
+    def test_update_unsatisfiable_named_scope_errors(self, click_consumer, env):
+        home, _ = env
+        (home / ".hermes").mkdir()
+
+        result = invoke(
+            click_consumer, "skills", "update", "--harness", "hermes:project"
+        )
+
+        assert result.exit_code != 0
+        assert "hermes" in result.output and "project" in result.output
+
+    def test_uninstall_subset_and_per_target_scope(self, click_consumer, env):
+        home, project = env
+        (home / ".pi").mkdir()
+        assert invoke(
+            click_consumer, "skills", "install",
+            "--harness", "claude-code:project", "--harness", "pi",
+        ).exit_code == 0
+        claude_at_project = project / ".claude" / "skills" / "alpha"
+        pi_at_user = home / ".pi" / "agent" / "skills" / "alpha"
+        assert claude_at_project.is_dir() and pi_at_user.is_dir()
+
+        result = invoke(
+            click_consumer, "skills", "uninstall", "--harness", "claude-code:project"
+        )
+
+        assert result.exit_code == 0, result.output
+        assert not claude_at_project.exists()  # only the named subset target removed
+        assert pi_at_user.is_dir()             # the other harness is untouched
+
+
 class TestFailures:
     def test_invalid_bundled_skill_exits_nonzero_and_valid_still_installs(
         self, click_consumer, consumer_package, env
@@ -401,7 +474,7 @@ class TestInstallPlanExecutor:
         home, project = env
         source = BundledPackageDataSource(package, "skills")
         backends = default_registry().detect(home=home, project=project)
-        plan = [InstallTarget(backend=backend, scope="user") for backend in backends]
+        plan = [HarnessTarget(backend=backend, scope="user") for backend in backends]
 
         execution = execute_install_plan(
             source,
@@ -442,7 +515,7 @@ class TestInstallPlanExecutor:
         @click.pass_context
         def run_plan(ctx):
             backends = default_registry().detect(home=home, project=project)
-            plan = [InstallTarget(backend=b, scope="user") for b in backends]
+            plan = [HarnessTarget(backend=b, scope="user") for b in backends]
             execution = execute_install_plan(
                 source,
                 plan,

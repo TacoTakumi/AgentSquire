@@ -42,14 +42,15 @@ def _consumer_version(package: str, source_package: str) -> str:
 
 
 @dataclass(frozen=True)
-class InstallTarget:
-    """One (harness, scope) pair to install into.
+class HarnessTarget:
+    """One (harness, scope) pair a verb operates on.
 
     ``explicit`` is True when the user named this harness — then a scope the
     backend lacks is a hard error; when False (a detected harness) it is a
-    named skip, never an aborted run. This is the unit of an install *plan*:
-    the flag path and the interactive front-end differ only in how they build
-    the list of targets (REQ-15).
+    named skip, never an aborted run. This is the unit of a *plan* shared by
+    every verb: install, status, update, and uninstall differ only in the verb
+    they run per target, and the interactive front-end differs from the flag
+    path only in how it builds the list of targets (REQ-14, REQ-15).
     """
 
     backend: HarnessBackend
@@ -62,7 +63,7 @@ class InstallOutcome:
     """One target's structured result; ``result`` is None when the target was
     skipped because the backend lacks the requested scope (non-strict)."""
 
-    target: InstallTarget
+    target: HarnessTarget
     result: InstallResult | None
 
 
@@ -79,7 +80,7 @@ class PlanExecution:
 
 def execute_install_plan(
     source: SkillSource,
-    plan: list[InstallTarget],
+    plan: list[HarnessTarget],
     *,
     home: Path,
     project: Path,
@@ -154,28 +155,24 @@ def skills_command_group(
         show_default=True,
         help="Which harness skills directory to operate on.",
     )
-    harness_option = click.option(
-        "--harness",
-        default=None,
-        metavar="NAME",
-        help="Operate on one harness (default: all detected).",
-    )
     harness_multi_option = click.option(
         "--harness",
         "harnesses",
         multiple=True,
         metavar="NAME[:SCOPE]",
-        help="Install into this harness; repeatable, with an optional :scope "
+        help="Operate on this harness; repeatable, with an optional :scope "
         "suffix (default: all detected at --scope).",
     )
 
-    def build_install_plan(harness_specs: tuple[str, ...], scope: str):
-        """Resolve the repeatable --harness specs into an (plan, home, project).
+    def build_plan(harness_specs: tuple[str, ...], scope: str):
+        """Resolve the repeatable --harness specs into a (plan, home, project).
 
-        No specs keeps today's meaning — every detected harness at the top-level
-        ``scope`` (REQ-11). Each ``NAME[:scope]`` spec selects one harness at its
-        suffix scope, or the top-level ``scope`` when the suffix is omitted
-        (REQ-10); a named-but-unresolvable harness is a clean error.
+        Shared by every verb (REQ-14). No specs keeps today's meaning — every
+        detected harness at the top-level ``scope`` (REQ-11). Each
+        ``NAME[:scope]`` spec selects one harness at its suffix scope, or the
+        top-level ``scope`` when the suffix is omitted (REQ-10); a named
+        harness that is unknown, undetected, or given an invalid/unsatisfiable
+        scope is a clean, named error validated up front (REQ-12, REQ-13).
         """
         target_home, target_project = resolve_roots(home, project)
         registry = default_registry()
@@ -184,7 +181,7 @@ def skills_command_group(
             if not backends:
                 raise click.ClickException("no supported harnesses detected")
             plan = [
-                InstallTarget(backend=backend, scope=scope, explicit=False)
+                HarnessTarget(backend=backend, scope=scope, explicit=False)
                 for backend in backends
             ]
             return plan, target_home, target_project
@@ -213,37 +210,21 @@ def skills_command_group(
             except UnsupportedScopeError as error:
                 raise click.ClickException(str(error)) from error
             plan.append(
-                InstallTarget(backend=backend, scope=target_scope, explicit=True)
+                HarnessTarget(backend=backend, scope=target_scope, explicit=True)
             )
         return plan, target_home, target_project
 
-    def targets(harness: str | None):
-        """(backends, home, project) for this invocation, or a clear error."""
-        target_home, target_project = resolve_roots(home, project)
-        registry = default_registry()
-        if harness is not None:
-            try:
-                backends = [
-                    registry.resolve(harness, home=target_home, project=target_project)
-                ]
-            except (UnknownHarnessError, HarnessNotDetectedError) as error:
-                raise click.ClickException(str(error)) from error
-        else:
-            backends = registry.detect(home=target_home, project=target_project)
-            if not backends:
-                raise click.ClickException("no supported harnesses detected")
-        return backends, target_home, target_project
-
-    def run_on(backend, harness, invoke_verb):
-        """One verb call on one backend. A scope the backend lacks is a clean
-        error when that harness was asked for, a named skip otherwise — never
-        an aborted multi-harness run."""
+    def run_target(target: HarnessTarget, invoke_verb):
+        """One verb call on one plan target. A scope the backend lacks is a
+        clean error for an explicitly named target and a named skip otherwise —
+        never an aborted multi-harness run. (Explicit targets are validated in
+        build_plan, so this branch is reached only for detected ones.)"""
         try:
             return invoke_verb()
         except UnsupportedScopeError as error:
-            if harness is not None:
+            if target.explicit:
                 raise click.ClickException(str(error)) from error
-            click.echo(f"skipped {backend.name}: {error}", err=True)
+            click.echo(f"skipped {target.backend.name}: {error}", err=True)
             return None
 
     group = click.Group(name=name, help="Manage this package's bundled agent skills.")
@@ -254,7 +235,7 @@ def skills_command_group(
     @click.pass_context
     def install(ctx, scope, harnesses):
         """Install bundled skills into detected harnesses."""
-        plan, plan_home, plan_project = build_install_plan(harnesses, scope)
+        plan, plan_home, plan_project = build_plan(harnesses, scope)
         execution = execute_install_plan(
             source, plan, home=plan_home, project=plan_project,
             source_package=src_pkg, source_version=src_version,
@@ -264,29 +245,33 @@ def skills_command_group(
 
     @group.command("status")
     @scope_option
-    @harness_option
-    def status(scope, harness):
+    @harness_multi_option
+    def status(scope, harnesses):
         """Show each bundled skill's state per harness."""
-        backends, home, project = targets(harness)
-        for backend in backends:
-            statuses = run_on(backend, harness, lambda: status_verb(
-                source, backend, scope=scope, home=home, project=project
+        plan, home, project = build_plan(harnesses, scope)
+        for target in plan:
+            backend = target.backend
+            statuses = run_target(target, lambda: status_verb(
+                source, backend, scope=target.scope, home=home, project=project
             ))
             for skill in statuses or ():
-                click.echo(f"{skill.state.value} {skill.name} ({backend.name}/{scope})")
+                click.echo(
+                    f"{skill.state.value} {skill.name} ({backend.name}/{target.scope})"
+                )
 
     @group.command("update")
     @scope_option
-    @harness_option
+    @harness_multi_option
     @click.option("--force", is_flag=True, help="Overwrite locally-modified installs.")
     @click.pass_context
-    def update(ctx, scope, harness, force):
+    def update(ctx, scope, harnesses, force):
         """Update stale installed skills to the bundled version."""
-        backends, home, project = targets(harness)
+        plan, home, project = build_plan(harnesses, scope)
         failed = False
-        for backend in backends:
-            result = run_on(backend, harness, lambda: update_verb(
-                source, backend, scope=scope, home=home, project=project,
+        for target in plan:
+            backend = target.backend
+            result = run_target(target, lambda: update_verb(
+                source, backend, scope=target.scope, home=home, project=project,
                 source_package=src_pkg, source_version=src_version, force=force,
             ))
             if result is None:
@@ -294,7 +279,7 @@ def skills_command_group(
             for skill in result.updated:
                 click.echo(f"updated {skill.name} -> {skill.path}")
             for skill in result.up_to_date:
-                click.echo(f"up-to-date {skill.name} ({backend.name}/{scope})")
+                click.echo(f"up-to-date {skill.name} ({backend.name}/{target.scope})")
             for skill in result.skipped:
                 click.echo(f"skipped {skill.name}: {skill.reason}", err=True)
             for violation in result.rejected:
@@ -305,19 +290,20 @@ def skills_command_group(
 
     @group.command("uninstall")
     @scope_option
-    @harness_option
-    def uninstall(scope, harness):
+    @harness_multi_option
+    def uninstall(scope, harnesses):
         """Remove installed skills this package's stamp owns."""
-        backends, home, project = targets(harness)
-        for backend in backends:
-            result = run_on(backend, harness, lambda: uninstall_verb(
-                source, backend, scope=scope, home=home, project=project,
+        plan, home, project = build_plan(harnesses, scope)
+        for target in plan:
+            backend = target.backend
+            result = run_target(target, lambda: uninstall_verb(
+                source, backend, scope=target.scope, home=home, project=project,
                 source_package=src_pkg,
             ))
             if result is None:
                 continue
             for skill in result.removed:
-                click.echo(f"removed {skill.name} ({backend.name}/{scope})")
+                click.echo(f"removed {skill.name} ({backend.name}/{target.scope})")
             for skill in result.skipped:
                 click.echo(f"skipped {skill.name}: {skill.reason}", err=True)
 
