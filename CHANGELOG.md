@@ -8,6 +8,55 @@ The version is declared in two places that are kept in sync by the release
 tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
 `pyproject.toml`.
 
+## [0.5.0]
+
+### Added
+- **Skills now resolve from a two-root union: your package data and your repo
+  root.** The zero-arg default source of `skills_command_group` is now
+  `UnionSource([Root A, Root B])`, where Root A is your package-data skills
+  (`your_pkg/skills`, unchanged) and Root B is a top-level repo `skills/` dir
+  shipped into your wheel. Both roots enumerate together across every verb. A
+  consumer with no Root B (awiki, and agentsquire's own empty root today)
+  resolves exactly Root A, byte-for-byte as before - no verb, mount, or
+  default-behaviour change. The two roots must be disjoint: a skill name in more
+  than one root is a hard error, never a silent override.
+- **`UnionSource(sources)`** - a disjoint N-root merge of any number of member
+  sources over the `SkillSource` seam, listing their union (each skill carrying
+  its owning source's content hash) and delegating `materialize(name)` to the
+  member that provides it. Wired with two members by default, but N-root by
+  construction.
+- **`FirstAvailableSource(sources)`** - resolves entirely to the first member
+  whose backing root exists, and only that member (an existing-but-empty root
+  still wins). It generalizes the proven wheel-first / source-fallback pattern
+  from a single file to a directory, and backs Root B's wheel-or-checkout
+  resolution.
+- **`DuplicateSkillError`** - a dedicated, importable error raised when a skill
+  name is provided by more than one root, naming the colliding skill and both
+  owning roots. The mounted CLI surfaces it as a clean, non-zero, traceback-free
+  command failure.
+- **`verify_skill_roots(package)`** - a public one-line disjointness check a
+  consumer drops into its test suite; it passes on disjoint roots and raises
+  `DuplicateSkillError` on a collision, running wherever agentsquire is already
+  a runtime dependency so it protects editable installs too.
+- **Keyword-only `source=` on `skills_command_group`.** Passing a `SkillSource`
+  uses it verbatim in place of the default union (which is then never
+  constructed); omitting it keeps the two-root default.
+- **Consumer guide for repo-level skills (README section 5).** The single
+  `force-include` line mapping `skills` -> `your_pkg/_repo_skills`, the
+  one-line `verify_skill_roots` guard, and a self-contained, copy-paste
+  `hatch_build.py` completeness hook that fails the wheel build if a repo-root
+  skill is dropped. agentsquire ships no build-hook plugin or entry point and
+  adds no build-time dependency: the force-include line is the only mandatory
+  consumer packaging change.
+
+### Changed
+- **agentsquire dogfoods the full recipe.** It stands up an empty repo-level
+  `skills/.gitkeep` wired as Root B via the documented force-include stanza
+  (shipped into the wheel at `agentsquire/_repo_skills/`), and its `squire`
+  staleness notice now runs `check_stale` over the same two-root union every
+  skills verb resolves through. `developing-with-agentsquire` stays in Root A;
+  the default union lists exactly it, with `.gitkeep` never enumerated.
+
 ## [0.4.0]
 
 ### Added
