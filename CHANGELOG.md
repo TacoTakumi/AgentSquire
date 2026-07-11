@@ -36,6 +36,10 @@ tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
   (as `api.md`, `harnesses.md`, `integration.md`) so `guide` has one
   authoritative source that works from an installed wheel, with no committed
   in-package duplicate.
+- **README Installation section.** Documents `pip install agentsquire` and, for
+  developers building on agentsquire, how to install the bundled
+  `developing-with-agentsquire` skill and reference docs into their own harness
+  (`squire skills install`, `squire guide`).
 
 ## [0.2.2]
 

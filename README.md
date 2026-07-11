@@ -18,6 +18,30 @@ is by marker directory; every operation is local (no network in any verb). Each
 harness's directories, scopes, and behaviour are recorded in
 [docs/harnesses.md](docs/harnesses.md).
 
+## Installation
+
+    pip install agentsquire
+
+This installs the library and its own CLI, `squire` (aliased `agentsquire`). As
+a consumer you normally add `agentsquire` to your package's dependencies rather
+than having users install it directly - it rides in your wheel, and your users
+only ever see your tool.
+
+agentsquire dogfoods its own contract: it carries the
+`developing-with-agentsquire` skill and its reference docs as package data. When
+you build an app on agentsquire, install that skill into your own agent harness
+so the harness has the integration know-how on hand while it works:
+
+    squire skills install
+
+That copies `developing-with-agentsquire` (how to ship skills, mount the group,
+and wire the staleness hook) into every detected harness. The same reference
+docs are served at the terminal from the installed wheel - no checkout needed:
+
+    squire guide              # topics: api, harnesses, integration
+    squire guide api          # the Python API reference
+    squire guide integration  # this consumer integration guide
+
 ## Consumer integration guide
 
 ### 1. Ship skills as package data
