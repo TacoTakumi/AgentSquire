@@ -86,10 +86,8 @@ def _write_skill(dir_path: Path, name: str, *, stamp=None):
     (dir_path / "SKILL.md").write_text(text)
 
 
-@pytest.fixture
-def installed(tmp_path, monkeypatch):
-    """A home/project with claude-code + pi detected, carrying our-stamped alpha
-    in three (harness, scope) slots plus unstamped and foreign-stamped decoys."""
+def _register_consumer(tmp_path, monkeypatch):
+    """Create and import-register a fixture consumer package with one skill."""
     pkg = tmp_path / "pkgroot" / PKG
     skill = pkg / "skills" / "alpha"
     skill.mkdir(parents=True)
@@ -97,6 +95,13 @@ def installed(tmp_path, monkeypatch):
     (skill / "SKILL.md").write_text(SKILL_MD)
     monkeypatch.syspath_prepend(str(tmp_path / "pkgroot"))
     monkeypatch.delitem(sys.modules, PKG, raising=False)
+
+
+@pytest.fixture
+def installed(tmp_path, monkeypatch):
+    """A home/project with claude-code + pi detected, carrying our-stamped alpha
+    in three (harness, scope) slots plus unstamped and foreign-stamped decoys."""
+    _register_consumer(tmp_path, monkeypatch)
 
     home = tmp_path / "home"
     project = tmp_path / "project"
@@ -142,6 +147,26 @@ def test_enumerates_exactly_installed_and_ours(installed):
         ("alpha", "claude-code", "project"),
         ("alpha", "pi", "user"),
     ]
+
+
+def test_coinciding_user_and_project_scope_lists_the_dir_once(tmp_path, monkeypatch):
+    """claude-code's user and project skills dirs coincide when run from the
+    home directory (home == project); the physical dir is offered once."""
+    _register_consumer(tmp_path, monkeypatch)
+    root = tmp_path / "root"
+    (root / ".claude").mkdir(parents=True)
+    source = BundledPackageDataSource(PKG, "skills")
+    install_verb(
+        source, CLAUDE_CODE, scope="user", home=root, project=root,
+        source_package=PKG, source_version="1.2.3",
+    )
+
+    backends = default_registry().detect(home=root, project=root)
+    entries = installed_and_ours(
+        backends, source_package=PKG, home=root, project=root
+    )
+
+    assert [(e.name, e.backend.name) for e in entries] == [("alpha", "claude-code")]
 
 
 def test_picker_offers_exactly_installed_and_ours(installed, fake_questionary):
