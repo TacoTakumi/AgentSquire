@@ -147,11 +147,13 @@ byte-identical to what you shipped.
 
 `status` classifies every skill by local hash compares only (no network,
 ever): not-installed, up-to-date, update-available (your shipped copy moved
-on), or locally-modified (the user edited the install, or the directory
-carries no stamp and is not ours to touch). `update` refreshes
-update-available skills and skips locally modified ones unless `--force` is
-given; `uninstall` removes only directories whose stamp names your package.
-User content is never silently overwritten or deleted.
+on), or locally-modified (the user edited the install, the directory carries
+no stamp, or a symlink sits at the target - none of them ours to touch).
+`update` refreshes update-available skills and skips locally modified ones
+unless `--force` is given; `uninstall` removes only directories whose stamp
+names your package. User content is never silently overwritten or deleted -
+a pre-existing symlink at a target (a common hand-wired setup) is reported
+and skipped, never followed or clobbered.
 
 ## Python API
 

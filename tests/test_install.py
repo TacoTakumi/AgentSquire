@@ -126,6 +126,46 @@ class TestCopy:
         assert marker.read_text() == "user edited this\n"
 
 
+class TestSymlinkTarget:
+    """A symlink at the target is skipped with an actionable reason, never a
+    crash and never clobbered (BUG-02)."""
+
+    def test_install_skips_a_dangling_symlink_without_crashing(self, env):
+        home, project, source_root = env
+        write_skill(source_root, "alpha")
+        skills = home / ".claude" / "skills"
+        skills.mkdir(parents=True)
+        link = skills / "alpha"
+        link.symlink_to(home / "gone")  # dangling
+
+        result = do_install(env)
+
+        assert result.installed == []
+        assert [s.name for s in result.skipped] == ["alpha"]
+        reason = result.skipped[0].reason
+        assert reason.startswith("locally-modified")
+        assert "symlink" in reason
+        assert link.is_symlink()  # left untouched
+        assert result.ok is True  # a skip is not a rejection
+
+    def test_install_skips_a_live_symlink_with_a_symlink_reason(self, env):
+        home, project, source_root = env
+        write_skill(source_root, "alpha")
+        target_dir = home / "real"
+        target_dir.mkdir()
+        skills = home / ".claude" / "skills"
+        skills.mkdir(parents=True)
+        link = skills / "alpha"
+        link.symlink_to(target_dir)
+
+        result = do_install(env)
+
+        assert result.installed == []
+        assert [s.name for s in result.skipped] == ["alpha"]
+        assert "symlink" in result.skipped[0].reason
+        assert link.is_symlink()
+
+
 class TestStamp:
     def test_stamp_carries_all_five_provenance_fields(self, env):
         home, project, source_root = env

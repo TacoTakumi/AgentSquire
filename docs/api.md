@@ -95,9 +95,15 @@ Classifies each source skill as exactly one `SkillState`:
   hash matches the shipped copy.
 - `UPDATE_AVAILABLE` - stamped hash differs from the shipped copy's hash.
 - `LOCALLY_MODIFIED` - installed content no longer matches its own stamped
-  hash, or the directory carries no stamp at all (not ours to touch).
+  hash, the directory carries no stamp at all, or a symlink sits at the
+  target (dangling or live) - none of them ours to touch.
 
-Decisions are local hash compares only.
+Decisions are local hash compares only. The symlink check uses `is_symlink`
+(not `exists`, which would follow the link): a pre-existing symlink at a
+target is always "present but not ours", so `install` skips it with a reason
+naming the symlink rather than crashing or clobbering it, and `update
+--force` unlinks the link (never `rmtree` through it) before writing a real
+install.
 
 ## Update
 
@@ -116,7 +122,8 @@ UninstallResult`
 
 Removes only skill directories whose stamp names agentsquire as the
 installer and `source_package` as the source. Unstamped or foreign-stamped
-same-named directories survive with the reason recorded per skill.
+same-named directories - and a symlink at the target - survive with the
+reason recorded per skill (a symlink is never followed or `rmtree`d).
 
 ## Staleness check hook
 

@@ -121,6 +121,31 @@ class TestClassification:
         assert state_of(env, "alpha") is SkillState.UP_TO_DATE
 
 
+class TestSymlinkTargets:
+    """A symlink at the target is present-but-not-ours: never NOT_INSTALLED,
+    never adopted as ours, even when it resolves to a valid install (BUG-02)."""
+
+    def test_dangling_symlink_is_locally_modified(self, env):
+        home, project, source_root = env
+        write_skill(source_root, "alpha")
+        skills = home / ".claude" / "skills"
+        skills.mkdir(parents=True)
+        (skills / "alpha").symlink_to(home / "gone")
+
+        assert state_of(env, "alpha") is SkillState.LOCALLY_MODIFIED
+
+    def test_live_symlink_even_to_a_valid_install_is_locally_modified(self, env):
+        home, project, source_root = env
+        write_skill(source_root, "alpha")
+        run(install, env)
+        installed = home / ".claude" / "skills" / "alpha"
+        moved = home / "alpha-moved"
+        installed.rename(moved)  # a real, up-to-date, our-stamped dir
+        installed.symlink_to(moved)  # now reached only through a symlink
+
+        assert state_of(env, "alpha") is SkillState.LOCALLY_MODIFIED
+
+
 class TestInstallIdempotency:
     def test_second_install_is_a_reported_byte_identical_noop(self, env):
         home, project, source_root = env

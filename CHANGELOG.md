@@ -8,6 +8,22 @@ The version is declared in two places that are kept in sync by the release
 tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
 `pyproject.toml`.
 
+## [0.2.1]
+
+### Fixed
+- **A pre-existing symlink at a target no longer crashes install/update or
+  gets clobbered (BUG-02).** The classifier and copy guard tested the target
+  with `Path.exists()`, which follows a symlink: a dangling link read as
+  not-installed and then `install` hit `FileExistsError`, while a live link
+  reached `shutil.rmtree` on `update --force` and raised "Cannot call rmtree
+  on a symbolic link". Detection now uses `is_symlink`, so a symlink (dangling
+  or live) classifies as `LOCALLY_MODIFIED` - present but not ours. `install`
+  and `update` (without `--force`) skip it with a reason naming the symlink;
+  `update --force` unlinks the link (never `rmtree`s through it) before
+  writing a real install; `uninstall` leaves it in place with a reason.
+  Symlinking skills into `~/.claude/skills` is a mainstream hand-wired setup,
+  so anyone migrating to `skills install` from it hit this on the first run.
+
 ## [0.2.0] - 2026-07-10
 
 ### Added

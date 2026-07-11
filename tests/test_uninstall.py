@@ -107,6 +107,42 @@ def test_not_installed_skill_is_reported_not_removed(env):
     assert result.skipped[0].reason == "not-installed"
 
 
+def test_dangling_symlink_target_survives_with_a_symlink_reason(env):
+    home, project, source_root = env
+    write_skill(source_root, "alpha")
+    skills = home / ".claude" / "skills"
+    skills.mkdir(parents=True)
+    link = skills / "alpha"
+    link.symlink_to(home / "gone")  # dangling
+
+    result = run(uninstall, env)
+
+    assert result.removed == []
+    assert [s.name for s in result.skipped] == ["alpha"]
+    assert "symlink" in result.skipped[0].reason
+    assert link.is_symlink()
+
+
+def test_live_symlink_to_our_install_is_not_rmtree_removed(env):
+    """A symlink resolving to our own stamped install is still not ours to
+    delete: uninstall must not rmtree through the link."""
+    home, project, source_root = env
+    write_skill(source_root, "alpha")
+    run(install, env)
+    installed = home / ".claude" / "skills" / "alpha"
+    moved = home / "alpha-moved"
+    installed.rename(moved)
+    installed.symlink_to(moved)  # symlink resolving to our stamped dir
+
+    result = run(uninstall, env)
+
+    assert result.removed == []
+    assert [s.name for s in result.skipped] == ["alpha"]
+    assert "symlink" in result.skipped[0].reason
+    assert installed.is_symlink()
+    assert (moved / "SKILL.md").is_file()  # target dir intact
+
+
 def test_mixed_run_removes_only_ours(env):
     home, project, source_root = env
     write_skill(source_root, "ours")

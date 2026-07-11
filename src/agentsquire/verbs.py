@@ -77,7 +77,14 @@ def _classify(entry: SourceSkill, target: Path) -> SkillState:
 
     A same-named directory without our stamp, or whose content no longer
     matches its own stamped hash, is locally modified — never ours to touch.
+    A symlink (dangling or live) is likewise present-but-not-ours.
     """
+    if target.is_symlink():
+        # exists() follows the link and would misjudge the target — a dangling
+        # link reads as absent, a live one as its destination. A symlink is
+        # never ours: report it locally-modified so install/update skip it and
+        # never rmtree the link (BUG-02).
+        return SkillState.LOCALLY_MODIFIED
     if not target.exists():
         return SkillState.NOT_INSTALLED
     manifest = target / "SKILL.md"
@@ -90,6 +97,17 @@ def _classify(entry: SourceSkill, target: Path) -> SkillState:
     if stamped_hash != entry.content_hash:
         return SkillState.UPDATE_AVAILABLE
     return SkillState.UP_TO_DATE
+
+
+def _skip_reason(state: SkillState, target: Path) -> str:
+    """The reason a skill was skipped, made specific when the target is a
+    symlink so the remedy — remove the link, or force — is clear (BUG-02)."""
+    if target.is_symlink():
+        return (
+            f"{state.value} (target is a symlink; remove it, "
+            "or update --force to replace it)"
+        )
+    return state.value
 
 
 def status(
@@ -146,7 +164,7 @@ def install(
                 continue
             if state is not SkillState.NOT_INSTALLED:
                 result.skipped.append(
-                    SkippedSkill(name=entry.name, reason=state.value)
+                    SkippedSkill(name=entry.name, reason=_skip_reason(state, target))
                 )
                 continue
             try:
@@ -172,8 +190,14 @@ def _copy_and_stamp(
     # Stamp before touching the target: an unstampable manifest raises here,
     # leaving neither a partial copy nor (on update) a removed old install.
     stamped = stamped_skill_md((skill_dir / "SKILL.md").read_text(), stamp)
-    if target.exists():
+    # Remove any prior entry symlink-safely: unlink a link (dangling or live)
+    # rather than rmtree through it, and rmtree only a real directory (BUG-02).
+    if target.is_symlink():
+        target.unlink()
+    elif target.is_dir():
         shutil.rmtree(target)
+    elif target.exists():
+        target.unlink()
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(skill_dir, target, symlinks=False)
     (target / "SKILL.md").write_text(stamped)
@@ -228,7 +252,9 @@ def update(
         if state is SkillState.NOT_INSTALLED or (
             state is SkillState.LOCALLY_MODIFIED and not force
         ):
-            result.skipped.append(SkippedSkill(name=entry.name, reason=state.value))
+            result.skipped.append(
+                SkippedSkill(name=entry.name, reason=_skip_reason(state, target))
+            )
             continue
         with source.materialize(entry.name) as skill_dir:
             violations = validate_skill_dir(skill_dir)
@@ -283,6 +309,10 @@ def uninstall(
         def skip(reason: str) -> None:
             result.skipped.append(SkippedSkill(name=entry.name, reason=reason))
 
+        if target.is_symlink():
+            # Present but not ours, and never rmtree a link: leave it (BUG-02).
+            skip("target is a symlink; not removing")
+            continue
         if not target.exists():
             skip("not-installed")
             continue

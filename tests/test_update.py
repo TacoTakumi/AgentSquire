@@ -142,6 +142,48 @@ class TestLocallyModified:
         assert state_of(env, "alpha") is SkillState.UP_TO_DATE
 
 
+class TestSymlinkTarget:
+    """A symlink at the target skips without force; with force it is removed
+    by unlink (never rmtree) and replaced by a real install (BUG-02)."""
+
+    def test_update_without_force_skips_a_symlink(self, env):
+        home, project, source_root = env
+        write_skill(source_root, "alpha")
+        skills = home / ".claude" / "skills"
+        skills.mkdir(parents=True)
+        link = skills / "alpha"
+        link.symlink_to(home / "gone")  # dangling
+
+        result = run(update, env)
+
+        assert result.updated == []
+        assert [s.name for s in result.skipped] == ["alpha"]
+        assert "symlink" in result.skipped[0].reason
+        assert link.is_symlink()  # left untouched
+
+    def test_force_replaces_a_symlink_with_a_real_install(self, env):
+        home, project, source_root = env
+        write_skill(source_root, "alpha")
+        elsewhere = home / "elsewhere"
+        elsewhere.mkdir()
+        (elsewhere / "keep.txt").write_text("do not delete me\n")
+        skills = home / ".claude" / "skills"
+        skills.mkdir(parents=True)
+        link = skills / "alpha"
+        link.symlink_to(elsewhere)  # live symlink -> a real dir
+
+        result = run(update, env, force=True)
+
+        assert [s.name for s in result.updated] == ["alpha"]
+        installed = home / ".claude" / "skills" / "alpha"
+        assert not installed.is_symlink()  # link replaced by a real dir
+        assert installed.is_dir()
+        assert (installed / "reference.md").read_text() == "reference for alpha\n"
+        assert state_of(env, "alpha") is SkillState.UP_TO_DATE
+        # the symlink was unlinked, not followed into and rmtree'd
+        assert (elsewhere / "keep.txt").read_text() == "do not delete me\n"
+
+
 class TestValidation:
     def test_invalid_new_source_version_is_rejected_and_install_kept(self, env):
         home, project, source_root = env
