@@ -162,9 +162,12 @@ def installed_and_ours(
 
     Enumerates the actual skill directories on disk — not the source's skill
     list — so what is offered is exactly what is installed and stamped as ours;
-    unstamped and foreign-stamped directories (and symlinks) are omitted.
+    unstamped and foreign-stamped directories (and symlinks) are omitted. A
+    physical directory is listed once even when two scopes resolve to it (e.g.
+    claude-code's user and project skills dirs coincide when run from home).
     """
     found: list[RemovableSkill] = []
+    seen: set[Path] = set()
     for backend in backends:
         for scope in backend.supported_scopes():
             root = backend.skills_dir(scope, home=home, project=project)
@@ -173,6 +176,10 @@ def installed_and_ours(
             for child in sorted(root.iterdir()):
                 if child.is_symlink() or not child.is_dir():
                     continue
+                resolved = child.resolve()
+                if resolved in seen:
+                    continue
+                seen.add(resolved)
                 manifest = child / "SKILL.md"
                 if manifest.is_file() and _is_ours(manifest.read_text(), source_package):
                     found.append(
@@ -381,7 +388,7 @@ def skills_command_group(
                 ctx.exit(1)
             if not plan:
                 # Nothing selected, or the confirm was declined — a clean no-op.
-                click.echo("Nothing selected; nothing to install.")
+                click.echo("Nothing to install.")
                 return
             execution = execute_install_plan(
                 source, plan, home=target_home, project=target_project,
@@ -484,7 +491,7 @@ def skills_command_group(
                 click.echo("Aborted; nothing was changed.", err=True)
                 ctx.exit(1)
             if not selection:
-                click.echo("Nothing selected; nothing to uninstall.")
+                click.echo("Nothing to uninstall.")
                 return
             execute_uninstall_plan(selection, source_package=src_pkg)
             return
