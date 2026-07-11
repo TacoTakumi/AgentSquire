@@ -6,7 +6,7 @@ enumerate skills from a source, detect harnesses, then install / status /
 update / uninstall. See docs/api.md for the reference.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 from agentsquire.harnesses import (
     CLAUDE_CODE,
