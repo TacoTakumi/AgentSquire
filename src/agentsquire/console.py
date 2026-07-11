@@ -16,8 +16,9 @@ from pathlib import Path
 import click
 
 import agentsquire
-from agentsquire import BundledPackageDataSource, check_stale
+from agentsquire import check_stale
 from agentsquire.cli import skills_command_group
+from agentsquire.sources import default_source
 
 # The installed agentsquire version, and the single source of truth for
 # ``--version`` (equals agentsquire.__version__, kept in sync by release tooling).
@@ -53,10 +54,12 @@ def _read_guide_doc(topic: str) -> str | None:
 def main() -> None:
     """squire - install agentsquire's own agent skills into your harness."""
     # Proactive skill-staleness notice, wired the production way (no home=/
-    # project=, so the real roots resolve). Safe by design: notice-only on
-    # stderr, never prompts, never mutates, never changes the exit code.
+    # project=, so the real roots resolve). Uses the same two-root union the
+    # skills group resolves through, so a Root B skill would be checked too.
+    # Safe by design: notice-only on stderr, never prompts, never mutates,
+    # never changes the exit code.
     check_stale(
-        BundledPackageDataSource("agentsquire"),
+        default_source("agentsquire"),
         prog_name="squire",
         update_command="squire skills update",
     )

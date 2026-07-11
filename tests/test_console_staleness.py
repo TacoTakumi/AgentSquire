@@ -10,6 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from agentsquire import verify_skill_roots
 from agentsquire.console import main
 from agentsquire.harnesses import CLAUDE_CODE
 from agentsquire.sources import DirectorySource
@@ -118,3 +119,10 @@ def test_real_entry_point_keeps_stdout_stderr_and_exit_code_separate(tmp_path):
     assert SKILL.encode() in proc.stdout
     assert b"squire skills update" in proc.stderr
     assert b"a skills update is available" not in proc.stdout
+
+
+def test_agentsquire_own_skill_roots_are_disjoint():
+    # The console now runs check_stale over the two-root union; agentsquire
+    # dogfoods the disjointness guard so its own Root A and (empty) Root B can
+    # never collide (REQ-16).
+    verify_skill_roots("agentsquire")
