@@ -13,6 +13,8 @@ from importlib.metadata import version
 
 import click
 
+from agentsquire.cli import skills_command_group
+
 # The installed agentsquire version, and the single source of truth for
 # ``--version`` (equals agentsquire.__version__, kept in sync by release tooling).
 _VERSION = version("agentsquire")
@@ -22,3 +24,9 @@ _VERSION = version("agentsquire")
 @click.version_option(version=_VERSION, prog_name="squire", message="%(version)s")
 def main() -> None:
     """squire - install agentsquire's own agent skills into your harness."""
+
+
+# Dogfood the ready-made group agentsquire publishes: mount it the production
+# way (no home=/project=), so each invocation resolves the real roots. Tests
+# redirect those roots with AGENTSQUIRE_HOME / AGENTSQUIRE_PROJECT.
+main.add_command(skills_command_group("agentsquire", default_scope="user"))
