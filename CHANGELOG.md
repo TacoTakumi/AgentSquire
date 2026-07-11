@@ -11,9 +11,19 @@ tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
 ## [0.4.0]
 
 ### Added
+- **`skills install --harness` is now repeatable and takes an optional `:scope`
+  suffix.** `install --harness claude-code:project --harness pi` installs into
+  that subset, each at its own scope (a bare `NAME` uses the top-level
+  `--scope`); omitting `--harness` still targets every detected harness at
+  `--scope`, and a single `--harness NAME` behaves exactly as before.
 - **`questionary` is now a hard runtime dependency.** It backs the interactive
   skill installer (in progress); a base install pulls it in with no extras, so
   the interactive path always imports with no optional-import branching.
+
+### Changed
+- **install now resolves to an explicit `(harness, scope)` plan run by one
+  shared executor.** Internal refactor with no change to non-interactive
+  behavior; it is the seam the interactive front-end will hand its plan to.
 
 ## [0.3.0]
 
