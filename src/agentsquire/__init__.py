@@ -37,6 +37,7 @@ from agentsquire.sources import (
     SkillSource,
     SourceSkill,
     UnionSource,
+    verify_skill_roots,
 )
 from agentsquire.staleness import check_stale
 from agentsquire.stamping import StampError, read_stamp
@@ -76,6 +77,7 @@ __all__ = [
     "UnionSource",
     "FirstAvailableSource",
     "DuplicateSkillError",
+    "verify_skill_roots",
     "ENTRY_POINT_GROUP",
     # harnesses (detect)
     "HarnessBackend",
