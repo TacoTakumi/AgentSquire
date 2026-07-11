@@ -277,6 +277,22 @@ def repo_skills_source(package: str) -> FirstAvailableSource:
     return FirstAvailableSource(members)
 
 
+def default_source(package: str, resource_path: str = "skills") -> UnionSource:
+    """The zero-arg default skill source for a consumer package (REQ-18).
+
+    The disjoint union of Root A (the package-data skills under
+    ``resource_path``) and Root B (the repo-level skills, wheel-or-checkout).
+    A consumer with no Root B present degrades to exactly Root A, unchanged
+    from a bare ``BundledPackageDataSource(package, resource_path)`` (REQ-08).
+    """
+    return UnionSource(
+        [
+            BundledPackageDataSource(package, resource_path),
+            repo_skills_source(package),
+        ]
+    )
+
+
 def _copy_traversable(traversable, target: Path) -> None:
     target.mkdir(parents=True, exist_ok=True)
     for child in traversable.iterdir():

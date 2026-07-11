@@ -36,7 +36,7 @@ from agentsquire.verbs import install as install_verb
 from agentsquire.verbs import status as status_verb
 from agentsquire.verbs import uninstall as uninstall_verb
 from agentsquire.verbs import update as update_verb
-from agentsquire.sources import BundledPackageDataSource, SkillSource
+from agentsquire.sources import SkillSource, default_source
 
 
 def _consumer_version(package: str, source_package: str) -> str:
@@ -249,6 +249,7 @@ def skills_command_group(
     default_scope: str = "user",
     *,
     name: str = "skills",
+    source: SkillSource | None = None,
     source_package: str | None = None,
     source_version: str | None = None,
     home: Path | None = None,
@@ -258,14 +259,18 @@ def skills_command_group(
 
     ``package`` is the consumer's importable package carrying skills as
     package data under ``resource_path``; ``default_scope`` is the scope a
-    plain invocation uses (--scope overrides it, REQ-14). ``source_package``
-    and ``source_version`` default to the package name and its installed
+    plain invocation uses (--scope overrides it, REQ-14). The zero-arg default
+    source is the two-root union of the package-data skills and the repo-level
+    skills (REQ-18); pass a keyword-only ``source`` to use a specific
+    ``SkillSource`` verbatim instead (REQ-07). ``source_package`` and
+    ``source_version`` default to the package name and its installed
     distribution (or ``__version__``) and end up in the provenance stamp.
     ``home`` and ``project`` point the group at explicit directories - tests
     pass fixture paths; production omits them and each invocation resolves
     the real ``Path.home()``/``Path.cwd()``.
     """
-    source = BundledPackageDataSource(package, resource_path)
+    if source is None:
+        source = default_source(package, resource_path)
     src_pkg = source_package or package
     src_version = source_version or _consumer_version(package, src_pkg)
 
