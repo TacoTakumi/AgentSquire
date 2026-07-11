@@ -10,7 +10,14 @@ from pathlib import Path
 
 import pytest
 
-from agentsquire.sources import DirectorySource, SkillSource, SourceSkill, UnionSource
+import agentsquire
+from agentsquire.sources import (
+    DirectorySource,
+    DuplicateSkillError,
+    SkillSource,
+    SourceSkill,
+    UnionSource,
+)
 
 
 def write_skill(root: Path, name: str, body: str = "body") -> None:
@@ -78,3 +85,42 @@ def test_union_is_n_root_over_three_members(tmp_path):
         ]
     )
     assert sorted(s.name for s in union.list_skills()) == ["a", "b", "c"]
+
+
+def test_duplicate_skill_error_is_importable_from_package():
+    assert agentsquire.DuplicateSkillError is DuplicateSkillError
+
+
+def test_duplicate_name_across_members_raises_from_list_skills(tmp_path):
+    union = UnionSource(
+        [
+            make_source(tmp_path, "left", ["a", "clash"]),
+            make_source(tmp_path, "right", ["clash", "b"]),
+        ]
+    )
+    with pytest.raises(DuplicateSkillError):
+        union.list_skills()
+
+
+def test_duplicate_name_across_members_raises_from_materialize(tmp_path):
+    union = UnionSource(
+        [
+            make_source(tmp_path, "left", ["clash"]),
+            make_source(tmp_path, "right", ["clash"]),
+        ]
+    )
+    with pytest.raises(DuplicateSkillError):
+        with union.materialize("clash"):
+            pass
+
+
+def test_duplicate_error_message_names_the_skill_and_both_roots(tmp_path):
+    left = make_source(tmp_path, "left", ["clash"])
+    right = make_source(tmp_path, "right", ["clash"])
+    union = UnionSource([left, right])
+    with pytest.raises(DuplicateSkillError) as excinfo:
+        union.list_skills()
+    message = str(excinfo.value)
+    assert "clash" in message
+    assert str(left.root) in message
+    assert str(right.root) in message
