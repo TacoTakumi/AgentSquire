@@ -93,14 +93,15 @@ def _uninstall_summary(entries: list[RemovableSkill]) -> str:
 
 
 def gather_uninstall_plan(
-    entries: list[RemovableSkill],
+    entries: list[RemovableSkill], *, assume_yes: bool = False
 ) -> list[RemovableSkill] | None:
-    """Prompt for which installed-and-ours skills to remove (REQ-22).
+    """Prompt for which installed-and-ours skills to remove (REQ-22, REQ-23).
 
     ``entries`` is the enumerated installed-and-ours set. Returns the selected
     subset once confirmed (a non-empty list); an empty list when nothing was
     selected or the confirm was declined (a clean no-op); or ``None`` when the
-    user cancelled a prompt (an abort). Only gathers — never deletes.
+    user cancelled a prompt (an abort). With ``assume_yes`` the destructive
+    confirm is pre-answered and never shown. Only gathers — never deletes.
     """
     chosen = questionary.checkbox(
         "Uninstall which skills?",
@@ -115,6 +116,8 @@ def gather_uninstall_plan(
         return []  # nothing selected — a clean no-op
 
     selection = [entries[index] for index in chosen]
+    if assume_yes:
+        return selection  # -y pre-answers the destructive confirm
     answer = questionary.confirm(_uninstall_summary(selection)).ask()
     if answer is None:
         return None  # cancelled at the confirm

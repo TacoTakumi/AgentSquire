@@ -182,3 +182,56 @@ def test_selecting_and_confirming_removes_exactly_those(
     assert (home / ".claude" / "skills" / "beta").is_dir()
     assert (home / ".claude" / "skills" / "gamma").is_dir()
     assert (home / ".claude" / "skills" / "delta").is_dir()
+
+
+class TestUninstallConfirmAndFlags:
+    """REQ-23: a destructive confirm summary before removal; -y pre-answers it;
+    --no-input runs the flag path over the specified targets with no prompt."""
+
+    def test_declining_the_confirm_removes_nothing(
+        self, installed, fake_questionary, tty
+    ):
+        home, project = installed
+        fake = fake_questionary(checkbox=[0], confirm=False)
+
+        result = CliRunner().invoke(
+            _group(home, project), ["uninstall"], catch_exceptions=False
+        )
+
+        assert result.exit_code == 0, result.output
+        assert any(call[0] == "confirm" for call in fake.calls)  # summary shown
+        assert (home / ".claude" / "skills" / "alpha").is_dir()  # nothing removed
+
+    def test_yes_removes_without_a_confirm_prompt(
+        self, installed, fake_questionary, tty
+    ):
+        home, project = installed
+        fake = fake_questionary(checkbox=[0], confirm=True)
+
+        result = CliRunner().invoke(
+            _group(home, project), ["uninstall", "-y"], catch_exceptions=False
+        )
+
+        assert result.exit_code == 0, result.output
+        assert any(call[0] == "checkbox" for call in fake.calls)  # picker still shown
+        assert not any(call[0] == "confirm" for call in fake.calls)  # confirm skipped
+        assert not (home / ".claude" / "skills" / "alpha").exists()  # removed
+
+    def test_no_input_with_harness_removes_only_that_target_without_prompting(
+        self, installed, fake_questionary, tty
+    ):
+        home, project = installed
+        fake = fake_questionary(checkbox=[0], confirm=True)
+
+        result = CliRunner().invoke(
+            _group(home, project),
+            ["uninstall", "--no-input", "--harness", "claude-code"],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0, result.output
+        assert fake.calls == []  # no prompt constructed
+        assert not (home / ".claude" / "skills" / "alpha").exists()  # target removed
+        # other harness/scope targets are untouched by the flag-specified run
+        assert (project / ".claude" / "skills" / "alpha").is_dir()
+        assert (home / ".pi" / "agent" / "skills" / "alpha").is_dir()

@@ -446,16 +446,26 @@ def skills_command_group(
     @group.command("uninstall")
     @scope_option
     @harness_multi_option
+    @click.option(
+        "--no-input", is_flag=True, help="Never prompt; run non-interactively."
+    )
+    @click.option(
+        "-y", "--yes", "assume_yes", is_flag=True,
+        help="Assume yes to the destructive confirm.",
+    )
     @click.pass_context
-    def uninstall(ctx, scope, harnesses):
+    def uninstall(ctx, scope, harnesses, no_input, assume_yes):
         """Remove installed skills this package's stamp owns.
 
         On an interactive terminal with no selection flag, lists the
         installed-and-ours skills across all detected harnesses and scopes and
-        lets you pick which to remove; otherwise removes them over the
-        flag-selected targets (default: all detected at --scope).
+        lets you pick which to remove behind a destructive confirm (-y
+        pre-answers it); otherwise removes them over the flag-selected targets
+        (default: all detected at --scope).
         """
-        if _should_prompt(ctx, harnesses):
+        # -y does not disable the picker here (unlike install): it pre-answers
+        # the destructive confirm, so the assume_yes gate flag stays False.
+        if _should_prompt(ctx, harnesses, no_input=no_input):
             from agentsquire.interactive import gather_uninstall_plan
 
             target_home, target_project = resolve_roots(home, project)
@@ -469,7 +479,7 @@ def skills_command_group(
             if not entries:
                 click.echo("Nothing installed by this package to uninstall.")
                 return
-            selection = gather_uninstall_plan(entries)
+            selection = gather_uninstall_plan(entries, assume_yes=assume_yes)
             if selection is None:
                 click.echo("Aborted; nothing was changed.", err=True)
                 ctx.exit(1)
