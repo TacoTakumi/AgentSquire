@@ -111,6 +111,42 @@ class BundledPackageDataSource:
             yield target
 
 
+class UnionSource:
+    """Disjoint N-root merge of member sources over the ``SkillSource`` seam.
+
+    ``list_skills()`` returns the union of the members' skills, each carrying
+    the content hash its owning member reports; ``materialize(name)`` delegates
+    to the member that provides that name. Roots are disjoint by construction —
+    a name in more than one member is a packaging mistake, not an override.
+    """
+
+    def __init__(self, sources: list):
+        self.sources = list(sources)
+
+    def _owners(self) -> dict:
+        """Map each skill name to the (source, SourceSkill) that provides it."""
+        owners: dict[str, tuple] = {}
+        for source in self.sources:
+            for skill in source.list_skills():
+                owners[skill.name] = (source, skill)
+        return owners
+
+    def list_skills(self) -> list[SourceSkill]:
+        return sorted(
+            (skill for _, skill in self._owners().values()),
+            key=lambda skill: skill.name,
+        )
+
+    @contextmanager
+    def materialize(self, name: str) -> Iterator[Path]:
+        owner = self._owners().get(name)
+        if owner is None:
+            raise KeyError(name)
+        source, _ = owner
+        with source.materialize(name) as path:
+            yield path
+
+
 def _copy_traversable(traversable, target: Path) -> None:
     target.mkdir(parents=True, exist_ok=True)
     for child in traversable.iterdir():

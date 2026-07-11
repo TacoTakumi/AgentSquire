@@ -34,6 +34,7 @@ from agentsquire.sources import (
     DirectorySource,
     SkillSource,
     SourceSkill,
+    UnionSource,
 )
 from agentsquire.staleness import check_stale
 from agentsquire.stamping import StampError, read_stamp
@@ -70,6 +71,7 @@ __all__ = [
     "SourceSkill",
     "DirectorySource",
     "BundledPackageDataSource",
+    "UnionSource",
     "ENTRY_POINT_GROUP",
     # harnesses (detect)
     "HarnessBackend",
