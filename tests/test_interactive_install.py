@@ -70,9 +70,8 @@ def fake_questionary(monkeypatch):
     return install
 
 
-@pytest.fixture
-def prepared(tmp_path, monkeypatch):
-    """A bundled source plus a home/project with claude-code and pi detected."""
+def _register_consumer(tmp_path, monkeypatch):
+    """Create and import-register a fixture consumer package with one skill."""
     pkg = tmp_path / "pkgroot" / "fixture_consumer_pkg"
     skill = pkg / "skills" / "alpha"
     skill.mkdir(parents=True)
@@ -81,6 +80,11 @@ def prepared(tmp_path, monkeypatch):
     monkeypatch.syspath_prepend(str(tmp_path / "pkgroot"))
     monkeypatch.delitem(sys.modules, "fixture_consumer_pkg", raising=False)
 
+
+@pytest.fixture
+def prepared(tmp_path, monkeypatch):
+    """A bundled source plus a home/project with claude-code and pi detected."""
+    _register_consumer(tmp_path, monkeypatch)
     home = tmp_path / "home"
     project = tmp_path / "project"
     (home / ".claude").mkdir(parents=True)
@@ -88,6 +92,17 @@ def prepared(tmp_path, monkeypatch):
     project.mkdir()
     source = BundledPackageDataSource("fixture_consumer_pkg", "skills")
     return source, home, project
+
+
+@pytest.fixture
+def bare(tmp_path, monkeypatch):
+    """A registered consumer plus a home/project with no harness markers."""
+    _register_consumer(tmp_path, monkeypatch)
+    home = tmp_path / "home"
+    project = tmp_path / "project"
+    home.mkdir()
+    project.mkdir()
+    return home, project
 
 
 @pytest.fixture
@@ -200,6 +215,87 @@ class TestInstallTtyGate:
 
         assert "--no-input" in result.output
         assert "--yes" in result.output and "-y" in result.output
+
+
+class TestInstallSafety:
+    """REQ-18/REQ-19/REQ-20/REQ-24: zero-harness guard, cancel abort, empty or
+    declined no-op, and no partial write on a confirmed multi-harness plan."""
+
+    def test_zero_detected_errors_without_constructing_a_checkbox(
+        self, bare, fake_questionary, tty
+    ):
+        home, project = bare
+        fake = fake_questionary(checkbox=["claude-code"], scopes=["user"], confirm=True)
+
+        result = CliRunner().invoke(
+            _group(home, project), ["install"], catch_exceptions=False
+        )
+
+        assert result.exit_code != 0
+        assert "no supported harnesses detected" in result.output
+        assert fake.calls == []  # no checkbox rendered
+
+    @pytest.mark.parametrize(
+        "checkbox, scopes, confirm",
+        [
+            (None, [], True),                 # cancel at the checkbox
+            (["claude-code"], [None], True),  # cancel at the scope select
+            (["claude-code"], ["user"], None),  # cancel at the confirm
+        ],
+    )
+    def test_cancel_at_any_prompt_aborts_with_no_writes(
+        self, prepared, fake_questionary, tty, checkbox, scopes, confirm
+    ):
+        _, home, project = prepared
+        fake_questionary(checkbox=checkbox, scopes=scopes, confirm=confirm)
+
+        result = CliRunner().invoke(
+            _group(home, project), ["install"], catch_exceptions=False
+        )
+
+        assert result.exit_code != 0
+        assert "aborted" in result.output.lower()
+        assert not (home / ".claude" / "skills" / "alpha").exists()
+        assert not (home / ".pi" / "agent" / "skills" / "alpha").exists()
+
+    @pytest.mark.parametrize(
+        "checkbox, scopes, confirm",
+        [
+            ([], [], True),                     # nothing selected
+            (["claude-code"], ["user"], False),  # confirm declined
+        ],
+    )
+    def test_empty_or_declined_is_a_clean_noop(
+        self, prepared, fake_questionary, tty, checkbox, scopes, confirm
+    ):
+        _, home, project = prepared
+        fake_questionary(checkbox=checkbox, scopes=scopes, confirm=confirm)
+
+        result = CliRunner().invoke(
+            _group(home, project), ["install"], catch_exceptions=False
+        )
+
+        assert result.exit_code == 0, result.output
+        assert "nothing" in result.output.lower()
+        assert not (home / ".claude" / "skills" / "alpha").exists()
+        assert not (home / ".pi" / "agent" / "skills" / "alpha").exists()
+
+    @pytest.mark.parametrize("confirm", [False, None])
+    def test_multi_harness_abort_at_confirm_writes_no_subset(
+        self, prepared, fake_questionary, tty, confirm
+    ):
+        _, home, project = prepared
+        fake_questionary(
+            checkbox=["claude-code", "pi"], scopes=["user", "user"], confirm=confirm
+        )
+
+        CliRunner().invoke(
+            _group(home, project), ["install"], catch_exceptions=False
+        )
+
+        # Confirm is the single last gate: zero of the two targets are written.
+        assert not (home / ".claude" / "skills" / "alpha").exists()
+        assert not (home / ".pi" / "agent" / "skills" / "alpha").exists()
 
 
 def test_prompts_in_order_and_returns_the_confirmed_plan(fake_questionary):
