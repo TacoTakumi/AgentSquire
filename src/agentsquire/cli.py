@@ -12,23 +12,26 @@ from __future__ import annotations
 
 import importlib
 import importlib.metadata
+from dataclasses import dataclass
 from pathlib import Path
 
 import click
 
 from agentsquire.harnesses import (
     SCOPES,
+    HarnessBackend,
     HarnessNotDetectedError,
     UnknownHarnessError,
     UnsupportedScopeError,
     default_registry,
 )
 from agentsquire.roots import resolve_roots
+from agentsquire.verbs import InstallResult
 from agentsquire.verbs import install as install_verb
 from agentsquire.verbs import status as status_verb
 from agentsquire.verbs import uninstall as uninstall_verb
 from agentsquire.verbs import update as update_verb
-from agentsquire.sources import BundledPackageDataSource
+from agentsquire.sources import BundledPackageDataSource, SkillSource
 
 
 def _consumer_version(package: str, source_package: str) -> str:
@@ -36,6 +39,86 @@ def _consumer_version(package: str, source_package: str) -> str:
         return importlib.metadata.version(source_package)
     except importlib.metadata.PackageNotFoundError:
         return getattr(importlib.import_module(package), "__version__", "unknown")
+
+
+@dataclass(frozen=True)
+class InstallTarget:
+    """One (harness, scope) pair to install into.
+
+    ``explicit`` is True when the user named this harness — then a scope the
+    backend lacks is a hard error; when False (a detected harness) it is a
+    named skip, never an aborted run. This is the unit of an install *plan*:
+    the flag path and the interactive front-end differ only in how they build
+    the list of targets (REQ-15).
+    """
+
+    backend: HarnessBackend
+    scope: str
+    explicit: bool = False
+
+
+@dataclass(frozen=True)
+class InstallOutcome:
+    """One target's structured result; ``result`` is None when the target was
+    skipped because the backend lacks the requested scope (non-strict)."""
+
+    target: InstallTarget
+    result: InstallResult | None
+
+
+@dataclass(frozen=True)
+class PlanExecution:
+    """The structured outcome of running a whole install plan."""
+
+    outcomes: list[InstallOutcome]
+
+    @property
+    def ok(self) -> bool:
+        return all(o.result.ok for o in self.outcomes if o.result is not None)
+
+
+def execute_install_plan(
+    source: SkillSource,
+    plan: list[InstallTarget],
+    *,
+    home: Path,
+    project: Path,
+    source_package: str,
+    source_version: str,
+) -> PlanExecution:
+    """Run an install plan and return its structured per-target results.
+
+    One ``install`` verb call per (harness, scope) target, emitting the same
+    per-skill output for every target. This is the single executor both the
+    non-interactive flag path and the interactive front-end hand a plan to
+    (REQ-15); it imports nothing from questionary/prompt_toolkit. A scope the
+    backend lacks is a clean ClickException for an explicit target and a named
+    skip otherwise — never an aborted multi-harness run.
+    """
+    outcomes: list[InstallOutcome] = []
+    for target in plan:
+        backend, scope = target.backend, target.scope
+        try:
+            result = install_verb(
+                source, backend, scope=scope, home=home, project=project,
+                source_package=source_package, source_version=source_version,
+            )
+        except UnsupportedScopeError as error:
+            if target.explicit:
+                raise click.ClickException(str(error)) from error
+            click.echo(f"skipped {backend.name}: {error}", err=True)
+            outcomes.append(InstallOutcome(target=target, result=None))
+            continue
+        for skill in result.installed:
+            click.echo(f"installed {skill.name} -> {skill.path}")
+        for skill in result.up_to_date:
+            click.echo(f"up-to-date {skill.name} ({backend.name}/{scope})")
+        for skill in result.skipped:
+            click.echo(f"skipped {skill.name}: {skill.reason}", err=True)
+        for violation in result.rejected:
+            click.echo(f"invalid skill {violation.message}", err=True)
+        outcomes.append(InstallOutcome(target=target, result=result))
+    return PlanExecution(outcomes=outcomes)
 
 
 def skills_command_group(
@@ -116,24 +199,15 @@ def skills_command_group(
     def install(ctx, scope, harness):
         """Install bundled skills into detected harnesses."""
         backends, home, project = targets(harness)
-        failed = False
-        for backend in backends:
-            result = run_on(backend, harness, lambda: install_verb(
-                source, backend, scope=scope, home=home, project=project,
-                source_package=src_pkg, source_version=src_version,
-            ))
-            if result is None:
-                continue
-            for skill in result.installed:
-                click.echo(f"installed {skill.name} -> {skill.path}")
-            for skill in result.up_to_date:
-                click.echo(f"up-to-date {skill.name} ({backend.name}/{scope})")
-            for skill in result.skipped:
-                click.echo(f"skipped {skill.name}: {skill.reason}", err=True)
-            for violation in result.rejected:
-                click.echo(f"invalid skill {violation.message}", err=True)
-            failed = failed or not result.ok
-        if failed:
+        plan = [
+            InstallTarget(backend=backend, scope=scope, explicit=harness is not None)
+            for backend in backends
+        ]
+        execution = execute_install_plan(
+            source, plan, home=home, project=project,
+            source_package=src_pkg, source_version=src_version,
+        )
+        if not execution.ok:
             ctx.exit(1)
 
     @group.command("status")
