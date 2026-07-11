@@ -8,6 +8,7 @@ Bundled consumer package data is the launch implementation.
 
 from __future__ import annotations
 
+import importlib.util
 import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -83,6 +84,12 @@ class BundledPackageDataSource:
         for part in self.resource_path.split("/"):
             traversable = traversable.joinpath(part)
         return traversable
+
+    def root_exists(self) -> bool:
+        try:
+            return self._root().is_dir()
+        except ModuleNotFoundError:
+            return False
 
     def list_skills(self) -> list[SourceSkill]:
         skills = []
@@ -215,6 +222,59 @@ class FirstAvailableSource:
             raise KeyError(name)
         with active.materialize(name) as path:
             yield path
+
+
+# Root B (repo-level skills) conventions (D-02): a built wheel force-includes the
+# repo-level skills dir to this fixed in-package location; an editable checkout
+# keeps them at <repo>/<REPO_SKILLS_DIRNAME>, found by the marker-walk below.
+REPO_SKILLS_RESOURCE = "_repo_skills"
+REPO_SKILLS_DIRNAME = "skills"
+
+
+def _package_dir(package: str) -> Path | None:
+    """The on-disk directory of an importable package, or None."""
+    try:
+        spec = importlib.util.find_spec(package)
+    except (ImportError, ValueError):
+        return None
+    if spec is None:
+        return None
+    for location in spec.submodule_search_locations or ():
+        return Path(location)
+    if spec.origin and spec.origin != "namespace":
+        return Path(spec.origin).parent
+    return None
+
+
+def find_repo_root(package: str, skills_dirname: str = REPO_SKILLS_DIRNAME) -> Path | None:
+    """Editable-checkout repo root for a package (REQ-11).
+
+    Walk up from the package's on-disk location to the first directory holding
+    both a ``pyproject.toml`` and a ``<skills_dirname>/`` subdir. Robust to
+    src-layout and flat-layout. Returns None when none is found — e.g. an
+    installed wheel in site-packages, where the packaged copy is used instead.
+    """
+    start = _package_dir(package)
+    if start is None:
+        return None
+    for candidate in (start, *start.parents):
+        if (candidate / "pyproject.toml").is_file() and (candidate / skills_dirname).is_dir():
+            return candidate
+    return None
+
+
+def repo_skills_source(package: str) -> FirstAvailableSource:
+    """Root B: a package's repo-level skills, wheel-first then editable-checkout
+    (REQ-10). The force-included ``<pkg>/_repo_skills`` copy is tried first;
+    failing that, the marker-walked ``<repo>/skills`` dir (omitted when the walk
+    finds nothing). Exactly one branch is ever live, so a wheel and a checkout
+    yield the identical Root B skill set.
+    """
+    members: list = [BundledPackageDataSource(package, REPO_SKILLS_RESOURCE)]
+    repo_root = find_repo_root(package)
+    if repo_root is not None:
+        members.append(DirectorySource(repo_root / REPO_SKILLS_DIRNAME))
+    return FirstAvailableSource(members)
 
 
 def _copy_traversable(traversable, target: Path) -> None:
