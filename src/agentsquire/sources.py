@@ -297,6 +297,19 @@ def default_source(package: str, resource_path: str = "skills") -> UnionSource:
     )
 
 
+def verify_skill_roots(package: str, resource_path: str = "skills") -> None:
+    """Assert a package's two skill roots are disjoint (REQ-13).
+
+    Builds the default two-root union and enumerates it: disjoint roots return
+    silently; a name present in more than one root raises ``DuplicateSkillError``
+    naming the collision. A consumer adds this to its test suite in one line, so
+    a colliding root is caught in CI — it runs in the normal environment where
+    agentsquire is already a runtime dependency, protecting editable mode where
+    a build hook cannot run.
+    """
+    default_source(package, resource_path).list_skills()
+
+
 def _copy_traversable(traversable, target: Path) -> None:
     target.mkdir(parents=True, exist_ok=True)
     for child in traversable.iterdir():
