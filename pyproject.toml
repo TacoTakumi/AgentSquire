@@ -30,6 +30,16 @@ dependencies = [
     "click",
 ]
 
+[project.scripts]
+squire = "agentsquire.console:main"
+agentsquire = "agentsquire.console:main"
+
+# agentsquire dogfoods its own consumer contract: it carries one bundled skill
+# (developing-with-agentsquire) and marks itself skill-carrying under the same
+# entry-point group it tells consumers to use. Nothing reads this at launch.
+[project.entry-points."agentsquire.skills"]
+agentsquire = "agentsquire"
+
 [dependency-groups]
 dev = [
     "build",
