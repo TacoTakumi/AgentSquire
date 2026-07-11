@@ -6,3 +6,7 @@ build/
 .venv/
 .pytest_cache/
 checkouts/
+
+# Local scratch / dev notes (never committed, never published)
+bugs.md
+feedback.md
