@@ -291,14 +291,20 @@ def skills_command_group(
                 raise click.ClickException("no supported harnesses detected")
             plan = gather_install_plan(backends, default_scope=scope)
             if plan is None:
-                ctx.exit(1)  # cancelled (T-08 adds the notice)
-            if plan:
-                execution = execute_install_plan(
-                    source, plan, home=target_home, project=target_project,
-                    source_package=src_pkg, source_version=src_version,
-                )
-                if not execution.ok:
-                    ctx.exit(1)
+                # Cancelled (Esc/Ctrl-C at any prompt): confirm is the single
+                # last gate, so nothing was written (REQ-19, REQ-24).
+                click.echo("Aborted; nothing was changed.", err=True)
+                ctx.exit(1)
+            if not plan:
+                # Nothing selected, or the confirm was declined — a clean no-op.
+                click.echo("Nothing selected; nothing to install.")
+                return
+            execution = execute_install_plan(
+                source, plan, home=target_home, project=target_project,
+                source_package=src_pkg, source_version=src_version,
+            )
+            if not execution.ok:
+                ctx.exit(1)
             return
         plan, plan_home, plan_project = build_plan(harnesses, scope)
         execution = execute_install_plan(

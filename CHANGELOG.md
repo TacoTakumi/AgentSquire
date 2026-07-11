@@ -21,6 +21,11 @@ tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
   `CI` is unset, and none of `--harness`, `--scope`, `-y/--yes`, or
   `--no-input` was passed - agents and scripts always run non-interactively.
   New `--no-input` (force non-interactive) and `-y/--yes` (assume yes) flags.
+  Cancelling any prompt aborts with a notice and no writes; selecting nothing
+  or declining the confirm is a clean no-op; and because the confirm is the
+  single last gate, aborting a multi-harness plan writes none of it (never a
+  partial subset). Zero detected harnesses is the same clean error as the
+  non-interactive path, with no empty checkbox shown.
 - **`--harness` is now repeatable with an optional `:scope` suffix across all
   four verbs (install, status, update, uninstall).** `install --harness
   claude-code:project --harness pi` operates on that subset, each at its own
