@@ -8,6 +8,13 @@ The version is declared in two places that are kept in sync by the release
 tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
 `pyproject.toml`.
 
+## [0.4.0]
+
+### Added
+- **`questionary` is now a hard runtime dependency.** It backs the interactive
+  skill installer (in progress); a base install pulls it in with no extras, so
+  the interactive path always imports with no optional-import branching.
+
 ## [0.3.0]
 
 ### Added
