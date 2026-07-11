@@ -48,6 +48,9 @@ class DirectorySource:
     def __init__(self, root: Path):
         self.root = Path(root)
 
+    def root_exists(self) -> bool:
+        return self.root.is_dir()
+
     def list_skills(self) -> list[SourceSkill]:
         return [
             SourceSkill(name=entry.name, content_hash=skill_content_hash(entry))
@@ -176,6 +179,41 @@ class UnionSource:
             raise KeyError(name)
         source, _ = owner
         with source.materialize(name) as path:
+            yield path
+
+
+class FirstAvailableSource:
+    """Resolves entirely to the first member whose backing root exists.
+
+    Members are tried in order; the first whose ``root_exists()`` is true wins
+    and every subsequent member is ignored — exactly one branch is ever live.
+    This is the directory-shaped generalization of the wheel-first /
+    source-fallback pattern: a packaged copy tried first, a checkout root
+    second. An existing but empty root still wins (it lists zero skills); with
+    no member available, ``list_skills()`` is empty and ``materialize`` raises
+    ``KeyError``.
+    """
+
+    def __init__(self, sources: list):
+        self.sources = list(sources)
+
+    def _active(self):
+        """The first member whose backing root exists, or None."""
+        for source in self.sources:
+            if source.root_exists():
+                return source
+        return None
+
+    def list_skills(self) -> list[SourceSkill]:
+        active = self._active()
+        return active.list_skills() if active is not None else []
+
+    @contextmanager
+    def materialize(self, name: str) -> Iterator[Path]:
+        active = self._active()
+        if active is None:
+            raise KeyError(name)
+        with active.materialize(name) as path:
             yield path
 
 
