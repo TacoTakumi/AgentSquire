@@ -10,3 +10,7 @@ checkouts/
 # Local scratch / dev notes (never committed, never published)
 bugs.md
 feedback.md
+
+# specflo local state: the active-project pointer is per-clone session state,
+# not shared config. The durable record lives under docs/projects/.
+.specflo/
