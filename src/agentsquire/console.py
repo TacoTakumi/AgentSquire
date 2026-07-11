@@ -13,6 +13,7 @@ from importlib.metadata import version
 
 import click
 
+from agentsquire import BundledPackageDataSource, check_stale
 from agentsquire.cli import skills_command_group
 
 # The installed agentsquire version, and the single source of truth for
@@ -24,6 +25,14 @@ _VERSION = version("agentsquire")
 @click.version_option(version=_VERSION, prog_name="squire", message="%(version)s")
 def main() -> None:
     """squire - install agentsquire's own agent skills into your harness."""
+    # Proactive skill-staleness notice, wired the production way (no home=/
+    # project=, so the real roots resolve). Safe by design: notice-only on
+    # stderr, never prompts, never mutates, never changes the exit code.
+    check_stale(
+        BundledPackageDataSource("agentsquire"),
+        prog_name="squire",
+        update_command="squire skills update",
+    )
 
 
 # Dogfood the ready-made group agentsquire publishes: mount it the production
