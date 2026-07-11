@@ -172,6 +172,77 @@ environment-wide listing of skill-carrying packages and changes no behaviour:
 your_pkg = "your_pkg"
 ```
 
+### 5. Ship repo-level skills from your repo root (optional)
+
+Skills can also live at your repo root - in a top-level `skills/` directory
+outside your importable package - and still ship to your users. This suits
+skills that are developed and used from the repository itself. agentsquire
+resolves the union of your package-data skills (Root A, section 1) and these
+repo-level skills (Root B), so `skills install` and friends see both.
+
+Root B resolves wheel-first then checkout: in a built wheel it is read from a
+fixed in-package location `your_pkg/_repo_skills`; in an editable checkout it is
+read straight from `<repo>/skills` (found by walking up to the first directory
+with a `pyproject.toml` and a `skills/` subdir). To copy the repo-root `skills/`
+into your wheel at that location, add this single force-include line to your
+pyproject:
+
+```toml
+[tool.hatch.build.targets.wheel.force-include]
+"skills" = "your_pkg/_repo_skills"
+```
+
+This is the only packaging change agentsquire requires: agentsquire ships no
+build-hook plugin and adds no build-time dependency to your project.
+
+The two roots must be disjoint - a skill name present in both roots is a
+packaging mistake, not an override, and raises `DuplicateSkillError`. Enforce it
+in your test suite in one line (it runs wherever agentsquire is already a runtime
+dependency, so it protects editable installs too, where a build hook cannot run):
+
+```python
+from agentsquire import verify_skill_roots
+
+
+def test_skill_roots_are_disjoint():
+    verify_skill_roots("your_pkg")
+```
+
+Optional completeness guard: `force-include` copies the directory, but a stray
+ignore rule could still drop a skill from the wheel. To fail the build loudly if
+that ever happens, drop this self-contained `hatch_build.py` beside your
+pyproject and point hatchling at it:
+
+```toml
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
+```
+
+```python
+# hatch_build.py - force-include every repo-root skill and fail the build if the
+# skills/ directory has been dropped or emptied. Self-contained; not an
+# agentsquire dependency.
+from pathlib import Path
+
+from hatchling.builders.hooks.plugin.interface import BuildHookInterface
+
+
+class CustomBuildHook(BuildHookInterface):
+    def initialize(self, version, build_data):
+        skills = Path(self.root) / "skills"
+        if not skills.is_dir():
+            raise ValueError("hatch_build.py: repo-root skills/ is missing")
+        found = [d for d in sorted(skills.iterdir()) if d.is_dir()]
+        if not found:
+            raise ValueError("hatch_build.py: repo-root skills/ has no skills")
+        force_include = build_data.setdefault("force_include", {})
+        for skill in found:
+            force_include[str(skill)] = f"your_pkg/_repo_skills/{skill.name}"
+```
+
+agentsquire never wires itself into your build: the completeness hook is your
+own optional file, and the force-include line above is the only mandatory change.
+
 ## The provenance and update model
 
 Installs are plain copies - no symlinks, no lockfile, no references back into
