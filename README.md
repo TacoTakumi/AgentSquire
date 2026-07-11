@@ -42,6 +42,18 @@ docs are served at the terminal from the installed wheel - no checkout needed:
     squire guide api          # the Python API reference
     squire guide integration  # this consumer integration guide
 
+### From source
+
+Clone the repository and install it into your environment:
+
+    git clone https://github.com/TacoTakumi/AgentSquire.git
+    cd AgentSquire
+    pip install .
+
+Add `-e` (`pip install -e .`) for an editable install if you plan to work on
+agentsquire itself. The repo uses [uv](https://docs.astral.sh/uv/): `uv sync`
+provisions a dev environment and `uv run pytest` runs the test suite.
+
 ## Consumer integration guide
 
 ### 1. Ship skills as package data
