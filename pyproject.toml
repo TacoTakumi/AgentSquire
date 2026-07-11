@@ -63,6 +63,15 @@ include = [
     "/docs/harnesses.md",
 ]
 
+# Force-include the three canonical docs into the wheel so `guide` has a single
+# authoritative source with no hand-maintained in-package duplicate. The sources
+# live only under docs/ and README.md; nothing is committed under the package.
+# README.md becomes the `integration` topic.
+[tool.hatch.build.targets.wheel.force-include]
+"docs/api.md" = "agentsquire/_docs/api.md"
+"docs/harnesses.md" = "agentsquire/_docs/harnesses.md"
+"README.md" = "agentsquire/_docs/integration.md"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
