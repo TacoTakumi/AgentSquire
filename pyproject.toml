@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentsquire"
-version = "0.3.0"
+version = "0.4.0"
 description = "Let a Python package carry its own agent integrations and install them into whatever agent harness is present."
 readme = "README.md"
 license = "MIT"
