@@ -191,14 +191,29 @@ def skills_command_group(
         plan = []
         for spec in harness_specs:
             name, _, suffix = spec.partition(":")
+            target_scope = suffix or scope
             try:
                 backend = registry.resolve(
                     name, home=target_home, project=target_project
                 )
             except (UnknownHarnessError, HarnessNotDetectedError) as error:
                 raise click.ClickException(str(error)) from error
+            if target_scope not in SCOPES:
+                raise click.ClickException(
+                    f"harness {name!r}: unknown scope {target_scope!r}; "
+                    f"expected one of {', '.join(SCOPES)}"
+                )
+            # Validate the whole plan before any write: an explicitly named
+            # NAME:scope the backend cannot satisfy is a hard error here, so a
+            # multi-target plan never partially installs (REQ-12, REQ-24).
+            try:
+                backend.skills_dir(
+                    target_scope, home=target_home, project=target_project
+                )
+            except UnsupportedScopeError as error:
+                raise click.ClickException(str(error)) from error
             plan.append(
-                InstallTarget(backend=backend, scope=suffix or scope, explicit=True)
+                InstallTarget(backend=backend, scope=target_scope, explicit=True)
             )
         return plan, target_home, target_project
 

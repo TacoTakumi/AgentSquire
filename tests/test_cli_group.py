@@ -248,6 +248,71 @@ class TestRepeatableHarnessInstall:
         assert (home / ".pi" / "agent" / "skills" / "alpha").is_dir()
 
 
+class TestInstallTargetErrors:
+    """REQ-12/REQ-13: unresolvable --harness install targets produce named
+    errors, exit non-zero, and write nothing."""
+
+    def test_unknown_harness_name_errors(self, click_consumer, env):
+        home, _ = env
+
+        result = invoke(click_consumer, "skills", "install", "--harness", "bogus")
+
+        assert result.exit_code != 0
+        assert "unknown harness" in result.output and "bogus" in result.output
+        assert not (home / ".claude" / "skills").exists()
+
+    def test_supported_but_undetected_harness_errors(self, click_consumer, env):
+        home, _ = env
+
+        result = invoke(click_consumer, "skills", "install", "--harness", "pi")
+
+        assert result.exit_code != 0
+        assert "not detected" in result.output
+        assert not (home / ".claude" / "skills").exists()
+
+    def test_invalid_scope_suffix_names_the_scope(self, click_consumer, env):
+        home, project = env
+
+        result = invoke(
+            click_consumer, "skills", "install", "--harness", "claude-code:banana"
+        )
+
+        assert result.exit_code != 0
+        assert "banana" in result.output
+        assert not (home / ".claude" / "skills").exists()
+        assert not (project / ".claude" / "skills").exists()
+
+    def test_unsatisfiable_named_scope_names_harness_and_scope(
+        self, click_consumer, env
+    ):
+        home, _ = env
+        (home / ".hermes").mkdir()  # detected, but has no project scope
+
+        result = invoke(
+            click_consumer, "skills", "install", "--harness", "hermes:project"
+        )
+
+        assert result.exit_code != 0
+        assert "hermes" in result.output and "project" in result.output
+        assert not (home / ".hermes" / "skills").exists()
+
+    def test_no_partial_write_when_a_later_explicit_target_is_unsatisfiable(
+        self, click_consumer, env
+    ):
+        home, _ = env
+        (home / ".hermes").mkdir()
+
+        result = invoke(
+            click_consumer, "skills", "install",
+            "--harness", "claude-code", "--harness", "hermes:project",
+        )
+
+        assert result.exit_code != 0
+        # The earlier claude-code target must not have been written before the
+        # unsatisfiable hermes:project target aborted the plan (REQ-24).
+        assert not (home / ".claude" / "skills" / "alpha").exists()
+
+
 class TestFailures:
     def test_invalid_bundled_skill_exits_nonzero_and_valid_still_installs(
         self, click_consumer, consumer_package, env
