@@ -28,6 +28,7 @@ classifiers = [
 dependencies = [
     "pyyaml",
     "click",
+    "questionary",
 ]
 
 [project.scripts]
