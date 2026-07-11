@@ -7,8 +7,10 @@ end-to-end against fixture harness dirs; --scope overrides the declared
 default; the library source names no consumer.
 """
 
+import ast
 import inspect
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -18,7 +20,14 @@ import typer
 import typer.main
 from click.testing import CliRunner
 
-from agentsquire.cli import skills_command_group
+from agentsquire.cli import (
+    InstallTarget,
+    _consumer_version,
+    execute_install_plan,
+    skills_command_group,
+)
+from agentsquire.harnesses import default_registry
+from agentsquire.sources import BundledPackageDataSource
 
 SKILL_MD = "---\nname: alpha\ndescription: A fixture skill.\n---\n\nbody\n"
 
@@ -257,6 +266,87 @@ class TestCommandGroupInjection:
 
         assert result.exit_code == 0
         assert (home / ".claude" / "skills" / "alpha" / "SKILL.md").exists()
+
+
+class TestInstallPlanExecutor:
+    """REQ-15/REQ-06: install resolves to an explicit (harness, scope) plan run
+    by one prompt_toolkit-free executor that both paths share."""
+
+    def test_executor_module_imports_no_tui_libraries(self):
+        cli_path = Path(__file__).parent.parent / "src" / "agentsquire" / "cli.py"
+        imported: set[str] = set()
+        for node in ast.walk(ast.parse(cli_path.read_text())):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module.split(".")[0])
+        assert "questionary" not in imported
+        assert "prompt_toolkit" not in imported
+
+    def test_execute_install_plan_returns_structured_per_target_results(
+        self, consumer_package, env
+    ):
+        package, _ = consumer_package
+        home, project = env
+        source = BundledPackageDataSource(package, "skills")
+        backends = default_registry().detect(home=home, project=project)
+        plan = [InstallTarget(backend=backend, scope="user") for backend in backends]
+
+        execution = execute_install_plan(
+            source,
+            plan,
+            home=home,
+            project=project,
+            source_package=package,
+            source_version=_consumer_version(package, package),
+        )
+
+        assert execution.ok
+        assert [target.backend.name for target in plan] == ["claude-code"]
+        installed = [
+            skill.name
+            for outcome in execution.outcomes
+            for skill in outcome.result.installed
+        ]
+        assert installed == ["alpha"]
+        assert (home / ".claude" / "skills" / "alpha").is_dir()
+
+    def test_executor_reproduces_the_flag_install_output(self, consumer_package, env):
+        package, _ = consumer_package
+        home, project = env
+        installed = home / ".claude" / "skills" / "alpha"
+        source = BundledPackageDataSource(package, "skills")
+
+        group = skills_command_group(
+            package, default_scope="user", home=home, project=project
+        )
+        flag = invoke(group, "install")
+        assert flag.exit_code == 0, flag.output
+        flag_output = flag.output
+
+        # Reset so the direct run's installed paths match byte-for-byte.
+        shutil.rmtree(installed)
+
+        @click.command()
+        @click.pass_context
+        def run_plan(ctx):
+            backends = default_registry().detect(home=home, project=project)
+            plan = [InstallTarget(backend=b, scope="user") for b in backends]
+            execution = execute_install_plan(
+                source,
+                plan,
+                home=home,
+                project=project,
+                source_package=package,
+                source_version=_consumer_version(package, package),
+            )
+            if not execution.ok:
+                ctx.exit(1)
+
+        direct = invoke(run_plan)
+        assert direct.exit_code == 0, direct.output
+        assert direct.output == flag_output
+        assert installed.is_dir()
 
 
 def test_library_source_names_no_consumer():
