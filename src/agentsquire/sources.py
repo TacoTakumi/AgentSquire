@@ -139,6 +139,10 @@ def _source_label(source) -> str:
     if package is not None:
         resource = getattr(source, "resource_path", "") or ""
         return f"{package}/{resource}".rstrip("/")
+    if isinstance(source, FirstAvailableSource):
+        member = source._active()
+        if member is not None:
+            return _source_label(member)
     return repr(source)
 
 
