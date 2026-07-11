@@ -8,6 +8,35 @@ The version is declared in two places that are kept in sync by the release
 tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
 `pyproject.toml`.
 
+## [0.3.0]
+
+### Added
+- **agentsquire now ships its own runnable CLI, `squire` (long alias
+  `agentsquire`).** It dogfoods the library's consumer contract end to end,
+  carrying one bundled skill, mounting the ready-made skills group, emitting the
+  proactive staleness notice, and serving its own reference docs.
+  - `squire skills install|status|update|uninstall` - the standard group,
+    mounted the production way at user scope by default, operating on
+    agentsquire's one bundled skill.
+  - `squire guide [TOPIC]` - with no argument lists the reference topics (api,
+    harnesses, integration); with a topic, pages that canonical doc as raw
+    markdown. An unknown topic is a clean, non-zero error naming the valid
+    topics.
+  - `squire --version` prints the installed agentsquire version; `squire --help`
+    and `agentsquire --help` are identical below the usage line.
+  - A proactive staleness notice on stderr points at `squire skills update` when
+    an installed copy is out of date; suppressed under CI or
+    `AGENTSQUIRE_NO_UPDATE_CHECK`, and it never changes stdout or the exit code.
+- **`developing-with-agentsquire` bundled skill.** agentsquire carries one Agent
+  Skill as package data and marks itself skill-carrying under the
+  `agentsquire.skills` entry-point group - the same contract it documents for
+  consumers.
+- **The three reference docs are force-included into the wheel.** `docs/api.md`,
+  `docs/harnesses.md`, and `README.md` are packaged under `agentsquire/_docs/`
+  (as `api.md`, `harnesses.md`, `integration.md`) so `guide` has one
+  authoritative source that works from an installed wheel, with no committed
+  in-package duplicate.
+
 ## [0.2.2]
 
 ### Changed
