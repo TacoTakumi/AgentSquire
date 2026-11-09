@@ -206,3 +206,33 @@ def test_keyerror_raised_inside_the_with_body_propagates(tmp_path):
     with pytest.raises(KeyError, match="from-body"):
         with union.materialize("a"):
             raise KeyError("from-body")
+
+
+NON_PLAIN_NAMES = ["", ".", "..", "../outside", "sub/a", "sub\\a"]
+
+
+@pytest.mark.parametrize("name", NON_PLAIN_NAMES)
+def test_materialize_non_plain_name_raises_keyerror_two_members(tmp_path, name):
+    # A name that is not one plain path component is never a skill. With two
+    # directory members it must not look like a duplicate either.
+    (tmp_path / "outside").mkdir()
+    one = make_source(tmp_path, "one", ["a"])
+    two = make_source(tmp_path, "two", ["b"])
+    (one.root / "sub" / "a").mkdir(parents=True)
+    union = UnionSource([one, two])
+    with pytest.raises(KeyError):
+        with union.materialize(name):
+            pass
+
+
+@pytest.mark.parametrize("name", NON_PLAIN_NAMES)
+def test_materialize_non_plain_name_raises_keyerror_one_member(tmp_path, name):
+    # With one directory member the root itself, or a directory outside it,
+    # must never be yielded as a skill.
+    (tmp_path / "outside").mkdir()
+    one = make_source(tmp_path, "one", ["a"])
+    (one.root / "sub" / "a").mkdir(parents=True)
+    union = UnionSource([one])
+    with pytest.raises(KeyError):
+        with union.materialize(name):
+            pass

@@ -193,6 +193,12 @@ class UnionSource:
         # listing content-hashes every skill, and a member raises KeyError for
         # a name it does not provide. Every member is still asked, so a name
         # in more than one root stays a hard error.
+        #
+        # A skill name is one plain path component. Anything else is unknown
+        # here, before a member can resolve it to its root or to a directory
+        # outside it.
+        if name in ("", ".", "..") or "/" in name or "\\" in name:
+            raise KeyError(name)
         with ExitStack() as stack:
             owner = None
             path = None
