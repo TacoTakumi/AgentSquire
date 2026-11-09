@@ -276,9 +276,13 @@ def test_version_none_reads_real_install_metadata(capsys, plain_env):
 
 
 def test_version_none_for_a_distribution_not_installed_is_silent(capsys, plain_env):
-    write_cache(DIST, "2.0.0")
-    assert agentsquire._install.installed_version(DIST) is None
-    assert_silent(run(capsys, DIST))
+    # A name of its own: another test file installs a fixture distribution
+    # under the shared fixture name, and the metadata lookup can still see
+    # it later in the same run.
+    name = "agentsquire-fixture-not-installed"
+    write_cache(name, "2.0.0")
+    assert agentsquire._install.installed_version(name) is None
+    assert_silent(run(capsys, name))
 
 
 def test_passed_version_is_used_without_a_metadata_lookup(
