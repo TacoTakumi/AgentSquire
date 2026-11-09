@@ -8,7 +8,7 @@ The version is declared in two places that are kept in sync by the release
 tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
 `pyproject.toml`.
 
-## [0.5.1]
+## [0.6.0]
 
 ### Added
 - **`default_source` is exported from the `agentsquire` package.**
