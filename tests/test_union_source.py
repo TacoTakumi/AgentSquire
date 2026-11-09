@@ -114,6 +114,25 @@ def test_duplicate_name_across_members_raises_from_materialize(tmp_path):
             pass
 
 
+def test_duplicate_name_in_two_of_three_members_raises(tmp_path):
+    one = make_source(tmp_path, "one", ["a", "clash"])
+    two = make_source(tmp_path, "two", ["b"])
+    three = make_source(tmp_path, "three", ["clash", "c"])
+    union = UnionSource([one, two, three])
+
+    with pytest.raises(DuplicateSkillError) as excinfo:
+        union.list_skills()
+    message = str(excinfo.value)
+    assert "clash" in message
+    assert str(one.root) in message
+    assert str(three.root) in message
+    assert str(two.root) not in message
+
+    with pytest.raises(DuplicateSkillError):
+        with union.materialize("clash"):
+            pass
+
+
 def test_duplicate_error_message_names_the_skill_and_both_roots(tmp_path):
     left = make_source(tmp_path, "left", ["clash"])
     right = make_source(tmp_path, "right", ["clash"])
