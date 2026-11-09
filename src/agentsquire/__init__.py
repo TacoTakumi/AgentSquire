@@ -21,6 +21,7 @@ from agentsquire.harnesses import (
     default_registry,
 )
 from agentsquire.hashing import STAMP_KEY, skill_content_hash
+from agentsquire.release import ReleaseCheck, ReleaseStatus
 from agentsquire.skills import (
     InvalidSkillError,
     Skill,
@@ -94,6 +95,9 @@ __all__ = [
     "OPENCODE",
     # staleness hook
     "check_stale",
+    # release check
+    "ReleaseCheck",
+    "ReleaseStatus",
     # lifecycle verbs
     "install",
     "status",
