@@ -528,3 +528,57 @@ def skills_command_group(
                 click.echo(f"skipped {skill.name}: {skill.reason}", err=True)
 
     return group
+
+
+def check_update_command(
+    distribution: str,
+    version: str | None = None,
+    *,
+    prog_name: str,
+    name: str = "check-update",
+) -> click.Command:
+    """Build the mountable ``check-update`` command for one consumer.
+
+    ``distribution`` is the consumer's distribution name on PyPI and
+    ``version`` its installed version (default: the version from the install
+    metadata). ``prog_name`` is the name the output line uses for the
+    program; ``name`` is the command name. The command takes no arguments
+    and no options. It asks PyPI for the newest release, records it in the
+    release cache and prints one line: on stdout with exit code 0 when the
+    check gave a result, on stderr with exit code 1 when the check failed.
+    It runs when CI or AGENTSQUIRE_NO_UPDATE_CHECK is set, because the user
+    asked for the check. It reports only: it upgrades nothing.
+    """
+
+    @click.command(name=name, help=f"Check PyPI for a newer release of {prog_name}.")
+    @click.pass_context
+    def check_update(ctx: click.Context) -> None:
+        # Imported here so that a program that never checks does not load
+        # the release module. The attribute is read at call time: a test
+        # replaces agentsquire.release.check_for_update.
+        from agentsquire import release
+
+        result = release.check_for_update(distribution, version)
+        status = result.status
+        installed = "unknown" if result.installed is None else result.installed
+        newest = "unknown" if result.newest is None else result.newest
+        if status is release.ReleaseStatus.CHECK_FAILED:
+            reason = result.error or "check failed"
+            click.echo(f"{prog_name}: could not check for a new release: {reason}", err=True)
+            ctx.exit(1)
+        if status is release.ReleaseStatus.UPDATE_AVAILABLE:
+            line = f"{prog_name}: a new release is available: {installed} -> {newest}"
+            if result.upgrade_command:
+                line += f"; run `{result.upgrade_command}`"
+        elif status is release.ReleaseStatus.UP_TO_DATE:
+            line = f"{prog_name} {installed} is up to date"
+        elif status is release.ReleaseStatus.AHEAD:
+            line = f"{prog_name} {installed} is newer than the newest PyPI release {newest}"
+        else:
+            line = (
+                f"{prog_name}: installed {installed}, newest PyPI release {newest}; "
+                "the versions cannot be compared"
+            )
+        click.echo(line)
+
+    return check_update
