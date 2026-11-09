@@ -9,6 +9,7 @@ Bundled consumer package data is the launch implementation.
 from __future__ import annotations
 
 import importlib.util
+import os
 import tempfile
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
@@ -197,7 +198,8 @@ class UnionSource:
         # A skill name is one plain path component. Anything else is unknown
         # here, before a member can resolve it to its root or to a directory
         # outside it.
-        if name in ("", ".", "..") or "/" in name or "\\" in name:
+        separators = [sep for sep in (os.sep, os.altsep) if sep]
+        if name in ("", ".", "..") or any(sep in name for sep in separators):
             raise KeyError(name)
         with ExitStack() as stack:
             owner = None

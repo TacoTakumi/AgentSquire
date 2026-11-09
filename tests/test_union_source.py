@@ -6,6 +6,7 @@ materialize() to the member that owns a given name. Roots are disjoint by
 construction; a name in two roots is a packaging mistake handled separately.
 """
 
+import os
 from pathlib import Path
 
 import pytest
@@ -208,7 +209,7 @@ def test_keyerror_raised_inside_the_with_body_propagates(tmp_path):
             raise KeyError("from-body")
 
 
-NON_PLAIN_NAMES = ["", ".", "..", "../outside", "sub/a", "sub\\a"]
+NON_PLAIN_NAMES = ["", ".", "..", "../outside", "sub/a"]
 
 
 @pytest.mark.parametrize("name", NON_PLAIN_NAMES)
@@ -236,3 +237,40 @@ def test_materialize_non_plain_name_raises_keyerror_one_member(tmp_path, name):
     with pytest.raises(KeyError):
         with union.materialize(name):
             pass
+
+
+posix_only = pytest.mark.skipif(os.sep != "/", reason="a backslash is a separator here")
+
+
+@posix_only
+def test_materialize_yields_a_listed_name_that_holds_a_backslash(tmp_path):
+    # Where a backslash is an ordinary file-name character, a listed name
+    # that holds one must still materialize.
+    one = make_source(tmp_path, "one", ["a", "we\\ird"])
+    union = UnionSource([one])
+    assert "we\\ird" in [skill.name for skill in union.list_skills()]
+    with union.materialize("we\\ird") as path:
+        assert path == one.root / "we\\ird"
+
+
+@posix_only
+def test_install_over_a_union_survives_a_name_that_holds_a_backslash(tmp_path):
+    # Every listed name reaches materialize during an install; one odd name
+    # must not stop the run for the others.
+    from agentsquire.harnesses import CLAUDE_CODE
+    from agentsquire.verbs import install
+
+    home, project = tmp_path / "home", tmp_path / "project"
+    home.mkdir()
+    project.mkdir()
+    one = make_source(tmp_path, "one", ["a", "we\\ird"])
+    install(
+        UnionSource([one]),
+        CLAUDE_CODE,
+        scope="user",
+        home=home,
+        project=project,
+        source_package="fixture-consumer",
+        source_version="1.2.3",
+    )
+    assert list(home.rglob("a/SKILL.md"))
