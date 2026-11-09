@@ -31,6 +31,35 @@ detect, install, status, update, or uninstall.
 - `DirectorySource(root)` - skills laid out as subdirectories of a plain
   local directory.
 - `SourceSkill` - one enumerable skill: `name`, `content_hash`.
+- `UnionSource(sources)` - the disjoint merge of the member sources.
+  `list_skills()` returns the skills of every member, sorted by name, each
+  with the content hash its own member reports; `materialize(name)` delegates
+  to the member that provides the name and raises `KeyError` when no member
+  does. A skill name present in more than one member is never an override:
+  both methods raise `DuplicateSkillError`.
+- `FirstAvailableSource(sources)` - resolves entirely to the first member
+  whose `root_exists()` is true and ignores every later member; an existing
+  but empty root still wins. With no member available, `list_skills()` is
+  empty and `materialize(name)` raises `KeyError`. Each member must be a
+  `SkillSource` that also exposes `root_exists() -> bool`, which is not part
+  of the protocol: `DirectorySource` and `BundledPackageDataSource` provide
+  it, `UnionSource` and `FirstAvailableSource` do not, and a member without
+  it raises `AttributeError` when the source resolves and reaches it, not
+  at construction.
+- `DuplicateSkillError` - raised when a skill name is provided by more than
+  one member of a `UnionSource`; the message names the skill and both roots.
+  A collision is a packaging mistake, not an override.
+- `default_source(package, resource_path="skills") -> UnionSource` - the
+  source the `skills` subcommands use by default: the union of the
+  package-data skills under `resource_path` (Root A) and the repo-level
+  skills (Root B), which resolve wheel-first then checkout - the packaged
+  `<package>/_repo_skills` copy first, else `<repo>/skills` in an editable
+  checkout. For a package with no repo-level skills it lists exactly the
+  skills of `BundledPackageDataSource(package, resource_path)`.
+- `verify_skill_roots(package, resource_path="skills") -> None` - builds
+  `default_source(package, resource_path)` and enumerates it. Returns
+  silently when the two roots are disjoint and raises `DuplicateSkillError`
+  when a skill name is present in both; call it from one test in your suite.
 
 ## Entry-point marker (optional)
 
@@ -187,6 +216,19 @@ example `install(source, backend, scope="user", home=home,
 project=project, source_package="your_pkg", source_version="1.0")`;
 `status`, `update`, `uninstall`, and `check_stale` take `home=` and
 `project=` the same way.
+
+`skills_command_group(package, resource_path="skills", default_scope="user",
+*, name="skills", source=None, source_package=None, source_version=None,
+home=None, project=None) -> click.Group`
+
+- `source` (keyword-only) - the `SkillSource` the subcommands operate on.
+  When omitted (`None`) the group uses `default_source(package,
+  resource_path)`; pass any `SkillSource`, for example
+  `DirectorySource(fixture_dir)`, and the group uses it as given.
+  `resource_path` then has no effect on the source, and `package` still
+  supplies the default `source_package` and `source_version`. A
+  `DuplicateSkillError` from the source ends the subcommand with a
+  one-line error and a non-zero exit, not a traceback.
 
 ### Redirecting a wired CLI with env vars
 
