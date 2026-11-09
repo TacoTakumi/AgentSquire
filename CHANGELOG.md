@@ -33,6 +33,10 @@ tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
 - `find_repo_root` and README section 5 document the monorepo case: a
   sub-package with no `skills/` directory of its own can resolve a top-level
   `skills/` as its repo-level root in a checkout.
+- `docs/api.md`, the API reference that ships in the wheel, now lists
+  `UnionSource`, `FirstAvailableSource`, `DuplicateSkillError`,
+  `default_source`, `verify_skill_roots` and the `source=` keyword of
+  `skills_command_group`.
 
 ## [0.5.0]
 
