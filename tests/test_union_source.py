@@ -143,3 +143,66 @@ def test_duplicate_error_message_names_the_skill_and_both_roots(tmp_path):
     assert "clash" in message
     assert str(left.root) in message
     assert str(right.root) in message
+
+
+class CountingSource:
+    """Wraps a source and counts how often it is enumerated."""
+
+    def __init__(self, inner):
+        self.inner = inner
+        self.root = inner.root
+        self.list_calls = 0
+
+    def list_skills(self):
+        self.list_calls += 1
+        return self.inner.list_skills()
+
+    def materialize(self, name):
+        return self.inner.materialize(name)
+
+
+def test_materialize_does_not_enumerate_any_member(tmp_path):
+    left = CountingSource(make_source(tmp_path, "left", ["a", "b"]))
+    right = CountingSource(make_source(tmp_path, "right", ["c", "d"]))
+    union = UnionSource([left, right])
+
+    with union.materialize("c") as path:
+        assert path == right.inner.root / "c"
+
+    assert left.list_calls == 0
+    assert right.list_calls == 0
+
+
+def test_materialize_does_not_hash_any_skill(tmp_path, monkeypatch):
+    union = UnionSource(
+        [make_source(tmp_path, "left", ["a", "b"]), make_source(tmp_path, "right", ["c"])]
+    )
+
+    def fail(path):
+        raise AssertionError(f"hashed {path}")
+
+    monkeypatch.setattr("agentsquire.sources.skill_content_hash", fail)
+    with union.materialize("a") as path:
+        assert path.name == "a"
+
+
+def test_materialize_duplicate_error_names_the_skill_and_both_roots(tmp_path):
+    left = make_source(tmp_path, "left", ["clash", "a"])
+    right = make_source(tmp_path, "right", ["b", "clash"])
+    union = UnionSource([left, right])
+    with pytest.raises(DuplicateSkillError) as excinfo:
+        with union.materialize("clash"):
+            pass
+    message = str(excinfo.value)
+    assert "clash" in message
+    assert str(left.root) in message
+    assert str(right.root) in message
+
+
+def test_keyerror_raised_inside_the_with_body_propagates(tmp_path):
+    union = UnionSource(
+        [make_source(tmp_path, "left", ["a"]), make_source(tmp_path, "right", ["b"])]
+    )
+    with pytest.raises(KeyError, match="from-body"):
+        with union.materialize("a"):
+            raise KeyError("from-body")

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import tempfile
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
@@ -146,6 +146,13 @@ def _source_label(source) -> str:
     return repr(source)
 
 
+def _duplicate_skill(name: str, first, second) -> DuplicateSkillError:
+    return DuplicateSkillError(
+        f"skill {name!r} is provided by more than one root: "
+        f"{_source_label(first)} and {_source_label(second)}"
+    )
+
+
 class UnionSource:
     """Disjoint N-root merge of member sources over the ``SkillSource`` seam.
 
@@ -170,10 +177,7 @@ class UnionSource:
             for skill in source.list_skills():
                 if skill.name in owners:
                     first, _ = owners[skill.name]
-                    raise DuplicateSkillError(
-                        f"skill {skill.name!r} is provided by more than one root: "
-                        f"{_source_label(first)} and {_source_label(source)}"
-                    )
+                    raise _duplicate_skill(skill.name, first, source)
                 owners[skill.name] = (source, skill)
         return owners
 
@@ -185,11 +189,23 @@ class UnionSource:
 
     @contextmanager
     def materialize(self, name: str) -> Iterator[Path]:
-        owner = self._owners().get(name)
-        if owner is None:
-            raise KeyError(name)
-        source, _ = owner
-        with source.materialize(name) as path:
+        # Ask each member for this one name instead of enumerating them all:
+        # listing content-hashes every skill, and a member raises KeyError for
+        # a name it does not provide. Every member is still asked, so a name
+        # in more than one root stays a hard error.
+        with ExitStack() as stack:
+            owner = None
+            path = None
+            for source in self.sources:
+                try:
+                    found = stack.enter_context(source.materialize(name))
+                except KeyError:
+                    continue
+                if owner is not None:
+                    raise _duplicate_skill(name, owner, source)
+                owner, path = source, found
+            if owner is None:
+                raise KeyError(name)
             yield path
 
 
