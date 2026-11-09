@@ -187,6 +187,152 @@ installed skills, and leaves the exit code untouched. It swallows its own
 errors - a startup hook must never break the command it runs inside. Local
 hash compares only.
 
+## Release check
+
+Tells the users of a consumer CLI that a newer release of the consumer is on
+PyPI. There are three functions: `notify_update` is the startup notice,
+`check_for_update` is the check itself, and `check_update_command` is the
+check as a mountable CLI command. The check is the only part of agentsquire
+that uses the network, and it runs only when the user or the consumer asks
+for it. Nothing here upgrades anything.
+
+In each function, `distribution` is the consumer's distribution name on PyPI,
+which can differ from its import name. `version` is the installed version of
+the consumer. When it is omitted, the version comes from the install
+metadata. Pass the consumer's own `__version__`: an editable install reports
+a frozen version in its metadata.
+
+### notify_update
+
+`notify_update(distribution, version=None, *, prog_name) -> None`
+
+The startup hook. notify_update makes no request: it reads the cache file
+that an earlier check wrote and compares the cached newest version with the
+installed one. It does not write the cache. The cached version is used at any
+age, and the comparison runs at each call, so the notice stays until the user
+upgrades and stops after that.
+
+When the installed version is older it prints exactly one stderr line:
+
+    {prog_name}: a new release is available: {installed} -> {newest}; run `{upgrade command}`
+
+The part from `;` on is there only when an upgrade command is known. Nothing
+is printed when there is no usable cache, when the installed version is not
+older, or when a version does not parse.
+
+The suppression gate is the one of `check_stale`: `CI` or
+`AGENTSQUIRE_NO_UPDATE_CHECK` set to a non-empty value turns the notice off,
+an empty string counts as unset, and there is no TTY gate. On every path the
+hook returns None, writes nothing to stdout, leaves the exit code untouched
+and swallows its own errors.
+
+### check_for_update
+
+`check_for_update(distribution, version=None) -> ReleaseCheck`
+
+Asks PyPI for the newest version: one HTTPS GET of
+`https://pypi.org/pypi/{distribution}/json`, with the User-Agent
+`agentsquire/{agentsquire version}`. A successful check records the newest
+version in the cache. A failed check writes nothing. The function never
+raises: each failure (no network, a timeout, an HTTP error, an unexpected
+response) becomes a result with the status `check-failed`. `CI` and
+`AGENTSQUIRE_NO_UPDATE_CHECK` do not turn it off, because the caller asked
+for the check.
+
+`ReleaseCheck` is a frozen dataclass with these fields:
+
+- `distribution` - the name as passed.
+- `installed` - the installed version, or None when it is not known.
+- `newest` - the newest version on PyPI, or None when the check failed.
+- `status` - a `ReleaseStatus`.
+- `upgrade_command` - the command that upgrades the consumer, or None. Set
+  only when the status is `update-available` and a command is known.
+- `error` - a one-line reason, set only when the status is `check-failed`.
+
+`ReleaseStatus` is an enum with five values:
+
+- `UP_TO_DATE` (`"up-to-date"`) - the installed version has the release
+  numbers of the newest one.
+- `UPDATE_AVAILABLE` (`"update-available"`) - the installed version is older.
+- `AHEAD` (`"ahead"`) - the installed version is newer than the newest
+  release on PyPI.
+- `UNKNOWN` (`"unknown"`) - the check gave a newest version, but the two
+  versions cannot be compared.
+- `CHECK_FAILED` (`"check-failed"`) - the check gave no newest version.
+
+### check_update_command
+
+`check_update_command(distribution, version=None, *, prog_name,
+name="check-update") -> click.Command`
+
+Builds a click command that the consumer mounts with `cli.add_command(...)`.
+Like `skills_command_group`, it also imports from `agentsquire.cli`.
+`prog_name` is the program name in the output line and `name` is the command
+name. The command takes no arguments and no options. It calls
+`check_for_update` and prints exactly one line:
+
+| Status | Line | Stream | Exit code |
+|---|---|---|---|
+| `update-available` | ``{prog_name}: a new release is available: {installed} -> {newest}; run `{upgrade command}` `` | stdout | 0 |
+| `up-to-date` | `{prog_name} {installed} is up to date` | stdout | 0 |
+| `ahead` | `{prog_name} {installed} is newer than the newest PyPI release {newest}` | stdout | 0 |
+| `unknown` | `{prog_name}: installed {installed}, newest PyPI release {newest}; the versions cannot be compared` | stdout | 0 |
+| `check-failed` | `{prog_name}: could not check for a new release: {reason}` | stderr | 1 |
+
+check-update exits non-zero only for a failed check. An available update is
+a result, not an error, so its exit code is 0. In the `update-available`
+line, the part from `;` on is there only when an upgrade command is known. A
+version that is not known prints as `unknown`. The command runs when `CI` or
+`AGENTSQUIRE_NO_UPDATE_CHECK` is set.
+
+### Cache location
+
+One JSON file per distribution, named after the normalized distribution name
+(lower case, each run of `-`, `_` and `.` as one `-`), in the directory
+`agentsquire` under the user cache root:
+
+- POSIX: `$XDG_CACHE_HOME/agentsquire/{name}.json`, or
+  `~/.cache/agentsquire/{name}.json` when `XDG_CACHE_HOME` is unset or empty.
+- Windows: `%LOCALAPPDATA%\agentsquire\{name}.json`.
+
+The file holds the newest version and the time of the check
+(`{"newest": "1.3.0", "checked_at": "<ISO 8601 UTC time>"}`), and nothing
+else. A file that is missing, unreadable or invalid counts as no cache. A
+write that fails is ignored.
+
+### Limits
+
+- Each socket operation of the request has a 3 second timeout.
+- The whole check has a 5 second total limit, `agentsquire.release.TOTAL_TIMEOUT`.
+  A check that is not done by then has the status `check-failed` and the
+  reason `timed out`.
+
+### Version comparison
+
+The comparison uses the release numbers only: the dotted integers at the
+start of the version, after an optional `v`. Missing trailing numbers count
+as zero, so `1.2` equals `1.2.0`. The text after the release numbers (pre,
+post, dev and local parts) is ignored.
+
+- A dev or post build of the same release number is not outdated:
+  `1.3.0.dev4` and `1.3.0.post1` are `up-to-date` against `1.3.0`.
+- A version that does not parse (no leading number, or an epoch such as
+  `1!2.0`) gives `unknown`, never an error.
+- Known limit: an installed pre-release gets no notice for the final release
+  of the same number. `1.3.0rc1` is `up-to-date` against `1.3.0`.
+
+### Upgrade command
+
+The upgrade command is known for two install methods, read from the running
+environment:
+
+- a uv tool install: `uv tool upgrade {distribution}`
+- a pipx install: `pipx upgrade {distribution}`
+
+The distribution name is used exactly as passed. For every other install
+method, and for an editable install in any environment, there is no command
+and the output line ends after the versions.
+
 ## Testing your integration
 
 Every verb and the mounted skills group accept explicit roots: point

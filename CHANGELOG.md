@@ -14,6 +14,28 @@ tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
 - **`default_source` is exported from the `agentsquire` package.**
   `from agentsquire import check_stale, default_source` now works, so a
   consumer can pass the same two-root union the `skills` subcommands use.
+- **A release check: a consumer CLI can tell its users that a newer release
+  of itself is on PyPI.** Five new names are exported from the `agentsquire`
+  package. The check reports only and upgrades nothing. README section 6 and
+  the "Release check" section of `docs/api.md` describe it.
+- **`check_for_update(distribution, version=None)`** - asks PyPI for the
+  newest version of a distribution and returns a `ReleaseCheck`. It makes one
+  HTTPS request with a 3 second socket timeout and a 5 second total limit,
+  records the newest version in a per-distribution cache file and never
+  raises. This is the only part of agentsquire that uses the network.
+- **`notify_update(distribution, version=None, *, prog_name)`** - the startup
+  hook. It makes no network request: it reads the cache and prints one stderr
+  line when the cached release is newer than the installed one. `CI` or
+  `AGENTSQUIRE_NO_UPDATE_CHECK` turns it off.
+- **`check_update_command(distribution, version=None, *, prog_name)`** -
+  builds a mountable `check-update` click command that runs the check and
+  prints one line. It exits non-zero only when the check failed. It also
+  imports from `agentsquire.cli`.
+- **`ReleaseCheck`** - the result of one check: the distribution, the
+  installed version, the newest version, the status, the upgrade command and
+  the reason for a failed check.
+- **`ReleaseStatus`** - the status enum: `up-to-date`, `update-available`,
+  `ahead`, `unknown` and `check-failed`.
 
 ### Changed
 - **The staleness recipe in the README and in the `developing-with-agentsquire`

@@ -256,6 +256,71 @@ class CustomBuildHook(BuildHookInterface):
 agentsquire never wires itself into your build: the completeness hook is your
 own optional file, and the force-include line above is the only mandatory change.
 
+### 6. Tell users about a new release of your CLI (optional)
+
+Sections 1 to 5 are about your skills. This one is about your package itself:
+agentsquire can tell your users that a newer release of your CLI is on PyPI.
+It has two parts, a startup notice and an explicit `check-update` command:
+
+```python
+import click
+
+from agentsquire import check_update_command, notify_update
+from your_pkg import __version__
+
+
+@click.group(name="your-cli")
+def cli():
+    """Your CLI."""
+
+
+cli.add_command(check_update_command("your-dist", __version__, prog_name="your-cli"))
+
+
+def main():
+    notify_update("your-dist", __version__, prog_name="your-cli")
+    cli()
+```
+
+`notify_update` is the startup notice. It reads a small cache file and
+compares the version in it with your version. It makes no network request, so
+it adds no delay and works offline. When the cache holds a newer release it
+prints one line on stderr:
+
+    your-cli: a new release is available: 1.2.3 -> 1.3.0; run `uv tool upgrade your-dist`
+
+`check_update_command` builds the `your-cli check-update` command. Only this
+command asks PyPI: it makes one request, prints one line with the result and
+records the newest version in the cache. The startup notice then stays on
+each run until the user upgrades. A user who never runs `check-update` gets
+no notice, because nothing wrote the cache.
+
+To run the same check from Python, for example from a `doctor` command, call
+`check_for_update("your-dist", __version__)`. It returns a `ReleaseCheck`
+with the installed version, the newest version, a `ReleaseStatus` and the
+upgrade command. It never raises: a failed request is a result with the
+status `check-failed` and a one-line reason.
+
+What to know:
+
+- Pass the PyPI distribution name (`your-dist` above), the name a user gives
+  to `pip install`. It can differ from the import name (`your_pkg`).
+- Pass your own `__version__`. Without it agentsquire reads the version from
+  the install metadata, and an editable install reports a frozen version
+  there: the one from the day of the install.
+- `CI` or `AGENTSQUIRE_NO_UPDATE_CHECK`, set to a non-empty value, turns the
+  startup notice off. It does not turn `check-update` or `check_for_update`
+  off, because the user asked for that check.
+- The upgrade command (`uv tool upgrade your-dist` or `pipx upgrade
+  your-dist`) is in the line only when your CLI runs from a uv tool install
+  or a pipx install. For any other install, and for an editable checkout, the
+  line has no command.
+- Nothing is upgraded. Both parts report only; the user runs the upgrade.
+- Like the staleness hook, `notify_update` writes nothing to stdout, never
+  changes your exit code and swallows its own errors.
+
+The details are in the "Release check" section of [docs/api.md](docs/api.md).
+
 ## The provenance and update model
 
 Installs are plain copies - no symlinks, no lockfile, no references back into
