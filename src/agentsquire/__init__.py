@@ -21,7 +21,7 @@ from agentsquire.harnesses import (
     default_registry,
 )
 from agentsquire.hashing import STAMP_KEY, skill_content_hash
-from agentsquire.release import ReleaseCheck, ReleaseStatus
+from agentsquire.release import ReleaseCheck, ReleaseStatus, check_for_update
 from agentsquire.skills import (
     InvalidSkillError,
     Skill,
@@ -41,7 +41,7 @@ from agentsquire.sources import (
     default_source,
     verify_skill_roots,
 )
-from agentsquire.staleness import check_stale
+from agentsquire.staleness import check_stale, notify_update
 from agentsquire.stamping import StampError, read_stamp
 from agentsquire.verbs import (
     InstalledSkill,
@@ -98,6 +98,9 @@ __all__ = [
     # release check
     "ReleaseCheck",
     "ReleaseStatus",
+    "check_for_update",
+    "notify_update",
+    "check_update_command",
     # lifecycle verbs
     "install",
     "status",
@@ -112,3 +115,17 @@ __all__ = [
     "UpdateResult",
     "UninstallResult",
 ]
+
+
+def __getattr__(name: str):
+    """Load check_update_command at first use.
+
+    The command builder lives in agentsquire.cli, which imports click. A
+    program that uses the Python API only does not pay for that import.
+    """
+    if name == "check_update_command":
+        from agentsquire.cli import check_update_command
+
+        globals()[name] = check_update_command
+        return check_update_command
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
