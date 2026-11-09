@@ -7,6 +7,12 @@ any input stream, never writes to stdout, never mutates installed skills,
 never raises, and never changes the consumer command's exit code. The
 explicit skills update verb is the sole updater. Decisions are local hash
 compares only.
+
+notify_update is the same kind of hook for releases of the consumer itself.
+It reads the release cache, which an explicit release check wrote before,
+and compares the cached newest version with the installed one. It makes no
+network request and never writes the cache. With a newer release it prints
+one line on stderr, under the same rules as above.
 """
 
 from __future__ import annotations
@@ -15,6 +21,7 @@ import os
 import sys
 from pathlib import Path
 
+from agentsquire import _install, _release_cache, release
 from agentsquire.harnesses import HarnessBackend, default_registry
 from agentsquire.roots import resolve_roots
 from agentsquire.sources import SkillSource
@@ -72,5 +79,44 @@ def check_stale(
             f" {count} {noun} ({names}); run `{update_command}`",
             file=sys.stderr,
         )
+    except Exception:
+        return
+
+
+def notify_update(
+    distribution: str,
+    version: str | None = None,
+    *,
+    prog_name: str,
+) -> None:
+    """Print a one-line stderr notice when the cache holds a newer release.
+
+    The installed version is the one passed, else the one in the install
+    metadata. The comparison runs at each call against the cached newest
+    version, of any age. Nothing is printed when there is no usable cache,
+    when the installed version is not older, or when a version does not
+    parse. The line ends with the upgrade command when the install method is
+    known. Returns None always and swallows its own errors.
+    """
+    try:
+        # The same notice gate as check_stale: a non-empty CI or
+        # AGENTSQUIRE_NO_UPDATE_CHECK disables, an empty value counts as
+        # unset, and there is no TTY gate.
+        if os.environ.get("CI") or os.environ.get("AGENTSQUIRE_NO_UPDATE_CHECK"):
+            return
+        newest = _release_cache.read_cache(distribution)
+        if newest is None:
+            return
+        installed = (
+            version if version is not None else _install.installed_version(distribution)
+        )
+        status = release.compare_versions(installed, newest)
+        if status is not release.ReleaseStatus.UPDATE_AVAILABLE:
+            return
+        line = f"{prog_name}: a new release is available: {installed} -> {newest}"
+        command = _install.upgrade_command(distribution)
+        if command:
+            line += f"; run `{command}`"
+        print(line, file=sys.stderr)
     except Exception:
         return
