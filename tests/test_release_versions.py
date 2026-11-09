@@ -66,6 +66,13 @@ def test_more_unparseable_versions_give_unknown(bad):
     assert compare_versions("1.0.0", bad) is ReleaseStatus.UNKNOWN
 
 
+@pytest.mark.parametrize("bad", ["12!2.0", "10!1.0", "v12!2.0", "123!4", "1.2!3"])
+def test_epoch_of_any_length_gives_unknown(bad):
+    assert compare_versions(bad, "1.0.0") is ReleaseStatus.UNKNOWN
+    assert compare_versions("1.0.0", bad) is ReleaseStatus.UNKNOWN
+    assert compare_versions(bad, "5.0") is ReleaseStatus.UNKNOWN
+
+
 def test_none_gives_unknown():
     assert compare_versions(None, "1.0.0") is ReleaseStatus.UNKNOWN
     assert compare_versions("1.0.0", None) is ReleaseStatus.UNKNOWN

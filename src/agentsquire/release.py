@@ -36,9 +36,8 @@ TOTAL_TIMEOUT = 5.0
 _MAX_REASON = 200
 
 # The release numbers at the start of a version string, after an optional
-# 'v'. The lookahead rejects an epoch ('1!2.0'): the number before the '!'
-# is not a release number.
-_RELEASE = re.compile(r"[vV]?([0-9]+(?:\.[0-9]+)*)(?!!)")
+# 'v'. The match is the longest run of dotted integers.
+_RELEASE = re.compile(r"[vV]?([0-9]+(?:\.[0-9]+)*)")
 
 
 class ReleaseStatus(enum.Enum):
@@ -72,8 +71,13 @@ def _release_numbers(version: str | None) -> tuple[int, ...] | None:
     """Return the release numbers of a version string, or None."""
     if not isinstance(version, str):
         return None
-    match = _RELEASE.match(version.strip())
+    text = version.strip()
+    match = _RELEASE.match(text)
     if match is None:
+        return None
+    # A '!' after the numbers marks them as an epoch ('1!2.0'), not as
+    # release numbers.
+    if text.startswith("!", match.end()):
         return None
     return tuple(int(part) for part in match.group(1).split("."))
 
