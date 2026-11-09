@@ -8,6 +8,32 @@ The version is declared in two places that are kept in sync by the release
 tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
 `pyproject.toml`.
 
+## [0.5.1]
+
+### Added
+- **`default_source` is exported from the `agentsquire` package.**
+  `from agentsquire import check_stale, default_source` now works, so a
+  consumer can pass the same two-root union the `skills` subcommands use.
+
+### Changed
+- **The staleness recipe in the README and in the `developing-with-agentsquire`
+  skill now calls `check_stale(default_source("your_pkg"), ...)`.** The old
+  recipe passed `BundledPackageDataSource("your_pkg")`, which checks only the
+  package-data skills. A consumer that ships repo-level skills got no notice
+  for them. Consumers that copied the old recipe should switch.
+- **`UnionSource.materialize(name)` no longer content-hashes every skill in
+  every member.** It asks each member for the one name. A name in more than one
+  root is still a `DuplicateSkillError`, and an unknown name is still a
+  `KeyError`. `materialize` now checks only the requested name for a duplicate;
+  `list_skills()` and `verify_skill_roots()` still check every name.
+
+### Documentation
+- `FirstAvailableSource` documents that each member must expose
+  `root_exists()`, which is not part of the `SkillSource` protocol.
+- `find_repo_root` and README section 5 document the monorepo case: a
+  sub-package with no `skills/` directory of its own can resolve a top-level
+  `skills/` as its repo-level root in a checkout.
+
 ## [0.5.0]
 
 ### Added
