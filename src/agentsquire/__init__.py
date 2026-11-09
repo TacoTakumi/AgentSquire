@@ -37,6 +37,7 @@ from agentsquire.sources import (
     SkillSource,
     SourceSkill,
     UnionSource,
+    default_source,
     verify_skill_roots,
 )
 from agentsquire.staleness import check_stale
@@ -77,6 +78,7 @@ __all__ = [
     "UnionSource",
     "FirstAvailableSource",
     "DuplicateSkillError",
+    "default_source",
     "verify_skill_roots",
     "ENTRY_POINT_GROUP",
     # harnesses (detect)

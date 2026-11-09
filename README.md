@@ -140,17 +140,21 @@ updater. It writes nothing to stdout, never changes your exit code, and
 swallows its own errors, so it can never break the command it runs inside:
 
 ```python
-from agentsquire import BundledPackageDataSource, check_stale
+from agentsquire import check_stale, default_source
 
 
 def main():
     check_stale(
-        BundledPackageDataSource("your_pkg"),
+        default_source("your_pkg"),
         prog_name="your-cli",
         update_command="your-cli skills update",
     )
     # ... the rest of your entry point
 ```
+
+`default_source("your_pkg")` is the same source the `skills` subcommands use by
+default: your package-data skills plus, when you ship them, your repo-level
+skills (section 5). The notice therefore covers every skill your CLI installs.
 
 The notice shows unless a suppression gate holds: `CI` set to a non-empty
 value, or `AGENTSQUIRE_NO_UPDATE_CHECK` set to a non-empty value. It is not

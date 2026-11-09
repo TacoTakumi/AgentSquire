@@ -18,17 +18,25 @@ from click.testing import CliRunner
 import agentsquire as sq
 
 README = Path(__file__).parent.parent / "README.md"
+BUNDLED_SKILL = (
+    Path(__file__).parent.parent
+    / "src"
+    / "agentsquire"
+    / "skills"
+    / "developing-with-agentsquire"
+    / "SKILL.md"
+)
 SKILL_MD = "---\nname: alpha\ndescription: A fixture skill.\n---\n\nbody\n"
 
 
-def blocks(language: str) -> list[str]:
+def blocks(language: str, doc: Path = README) -> list[str]:
     pattern = rf"```{language}\n(.*?)```"
-    return re.findall(pattern, README.read_text(), flags=re.DOTALL)
+    return re.findall(pattern, doc.read_text(), flags=re.DOTALL)
 
 
-def block_containing(language: str, marker: str) -> str:
-    matches = [b for b in blocks(language) if marker in b]
-    assert matches, f"no {language} block containing {marker!r} in README.md"
+def block_containing(language: str, marker: str, doc: Path = README) -> str:
+    matches = [b for b in blocks(language, doc) if marker in b]
+    assert matches, f"no {language} block containing {marker!r} in {doc.name}"
     assert len(matches) == 1, f"ambiguous {language} blocks for {marker!r}"
     return matches[0]
 
@@ -87,6 +95,59 @@ def test_staleness_hook_snippet_runs_silently_without_a_tty(your_pkg, capsys):
 
     assert main() is None
     assert capsys.readouterr().out == ""  # nothing on stdout off-TTY (REQ-17)
+
+
+@pytest.mark.parametrize("doc", [README, BUNDLED_SKILL], ids=["readme", "skill"])
+def test_staleness_hook_snippet_checks_the_default_two_root_source(doc):
+    snippet = block_containing("python", "check_stale", doc)
+
+    assert "from agentsquire import check_stale, default_source" in snippet
+    assert 'default_source("your_pkg")' in snippet
+    assert "BundledPackageDataSource" not in snippet
+
+
+def test_bundled_skill_staleness_snippet_runs_silently_without_a_tty(your_pkg, capsys):
+    snippet = block_containing("python", "check_stale", BUNDLED_SKILL)
+    main = run_snippet(snippet)["main"]
+
+    assert main() is None
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize("doc", [README, BUNDLED_SKILL], ids=["readme", "skill"])
+def test_staleness_hook_snippet_notices_a_stale_repo_level_skill(
+    doc, your_pkg, tmp_path, monkeypatch, capsys
+):
+    """A consumer that also ships repo-level skills gets a notice for them."""
+    home = your_pkg
+    repo = tmp_path / "pkgroot"  # the checkout root: pyproject.toml + skills/
+    (repo / "pyproject.toml").write_text('[project]\nname = "your-pkg"\n')
+    beta = repo / "skills" / "beta"
+    beta.mkdir(parents=True)
+    (beta / "SKILL.md").write_text(SKILL_MD.replace("alpha", "beta"))
+    monkeypatch.delenv("CI", raising=False)
+    monkeypatch.delenv("AGENTSQUIRE_NO_UPDATE_CHECK", raising=False)
+
+    source = sq.default_source("your_pkg")
+    assert sorted(s.name for s in source.list_skills()) == ["alpha", "beta"]
+    sq.install(
+        source,
+        sq.CLAUDE_CODE,
+        scope="user",
+        home=home,
+        project=tmp_path / "project",
+        source_package="your_pkg",
+        source_version="1.2.3",
+    )
+    (beta / "reference.md").write_text("a newer shipped copy\n")
+
+    main = run_snippet(block_containing("python", "check_stale", doc))["main"]
+
+    assert main() is None
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "beta" in captured.err
+    assert "alpha" not in captured.err
 
 
 def test_entry_point_snippet_registers_under_the_documented_group():

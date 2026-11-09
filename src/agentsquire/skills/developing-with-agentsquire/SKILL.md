@@ -64,16 +64,20 @@ newer shipped copy it prints one advisory line on stderr and nothing else - it
 never prompts, never writes stdout, never changes your exit code:
 
 ```python
-from agentsquire import BundledPackageDataSource, check_stale
+from agentsquire import check_stale, default_source
 
 def main():
     check_stale(
-        BundledPackageDataSource("your_pkg"),
+        default_source("your_pkg"),
         prog_name="your-cli",
         update_command="your-cli skills update",
     )
     # ... rest of your entry point
 ```
+
+`default_source("your_pkg")` is the source the `skills` subcommands use by
+default: your package-data skills plus any repo-level skills you ship, so the
+notice covers every skill your CLI installs.
 
 Suppressed when `CI` or `AGENTSQUIRE_NO_UPDATE_CHECK` is set to any non-empty
 value.
