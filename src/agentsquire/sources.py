@@ -203,6 +203,16 @@ class FirstAvailableSource:
     second. An existing but empty root still wins (it lists zero skills); with
     no member available, ``list_skills()`` is empty and ``materialize`` raises
     ``KeyError``.
+
+    Member contract: each member must be a ``SkillSource`` that also exposes
+    ``root_exists() -> bool``. That method is not part of the ``SkillSource``
+    protocol, so not every source qualifies. ``DirectorySource`` and
+    ``BundledPackageDataSource`` provide it; ``UnionSource`` and
+    ``FirstAvailableSource`` itself do not. A member without it is not
+    rejected at construction: it raises ``AttributeError`` the first time the
+    source resolves (``list_skills()`` or ``materialize()``), and only if no
+    earlier member has already won. To use a combinator as a member, wrap it
+    in an object that supplies ``root_exists()``.
     """
 
     def __init__(self, sources: list):
