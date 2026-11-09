@@ -267,6 +267,16 @@ def find_repo_root(package: str, skills_dirname: str = REPO_SKILLS_DIRNAME) -> P
     both a ``pyproject.toml`` and a ``<skills_dirname>/`` subdir. Robust to
     src-layout and flat-layout. Returns None when none is found — e.g. an
     installed wheel in site-packages, where the packaged copy is used instead.
+
+    Monorepo caveat: the walk does not stop at the package's own project
+    directory. If that directory has no ``<skills_dirname>/`` subdir, the walk
+    continues upward, so in a monorepo whose top-level directory holds both a
+    ``pyproject.toml`` and a top-level ``<skills_dirname>/``, a sub-package
+    resolves that top-level directory as its repo root and picks up skills
+    that belong to the whole monorepo. The risk is bounded:
+    ``repo_skills_source`` tries the packaged ``_repo_skills`` copy first and
+    uses the result of this walk only when that copy does not exist, which is
+    the case only in a real checkout, never in a built wheel.
     """
     start = _package_dir(package)
     if start is None:

@@ -195,6 +195,15 @@ pyproject:
 This is the only packaging change agentsquire requires: agentsquire ships no
 build-hook plugin and adds no build-time dependency to your project.
 
+Monorepo note: the walk does not stop at your package's own project directory.
+If that directory has no `skills/` subdir and a directory above it has both a
+`pyproject.toml` and a `skills/` subdir (for example the top level of a
+monorepo), your package resolves that higher `skills/` as its Root B in a
+checkout. The risk is bounded: the packaged `your_pkg/_repo_skills` copy is
+always tried first, so the walk decides the result only in a checkout, never in
+a built wheel. To prevent it, give the sub-package its own `skills/` directory
+(one that holds only a `.gitkeep` is enough).
+
 The two roots must be disjoint - a skill name present in both roots is a
 packaging mistake, not an override, and raises `DuplicateSkillError`. Enforce it
 in your test suite in one line (it runs wherever agentsquire is already a runtime
