@@ -262,7 +262,7 @@ class FirstAvailableSource:
             yield path
 
 
-# Root B (repo-level skills) conventions (D-02): a built wheel force-includes the
+# Root B (repo-level skills) conventions: a built wheel force-includes the
 # repo-level skills dir to this fixed in-package location; an editable checkout
 # keeps them at <repo>/<REPO_SKILLS_DIRNAME>, found by the marker-walk below.
 REPO_SKILLS_RESOURCE = "_repo_skills"
@@ -285,7 +285,7 @@ def _package_dir(package: str) -> Path | None:
 
 
 def find_repo_root(package: str, skills_dirname: str = REPO_SKILLS_DIRNAME) -> Path | None:
-    """Editable-checkout repo root for a package (REQ-11).
+    """Editable-checkout repo root for a package.
 
     Walk up from the package's on-disk location to the first directory holding
     both a ``pyproject.toml`` and a ``<skills_dirname>/`` subdir. Robust to
@@ -312,8 +312,8 @@ def find_repo_root(package: str, skills_dirname: str = REPO_SKILLS_DIRNAME) -> P
 
 
 def repo_skills_source(package: str) -> FirstAvailableSource:
-    """Root B: a package's repo-level skills, wheel-first then editable-checkout
-    (REQ-10). The force-included ``<pkg>/_repo_skills`` copy is tried first;
+    """Root B: a package's repo-level skills, wheel-first then editable-checkout.
+    The force-included ``<pkg>/_repo_skills`` copy is tried first;
     failing that, the marker-walked ``<repo>/skills`` dir (omitted when the walk
     finds nothing). Exactly one branch is ever live, so a wheel and a checkout
     yield the identical Root B skill set.
@@ -326,12 +326,12 @@ def repo_skills_source(package: str) -> FirstAvailableSource:
 
 
 def default_source(package: str, resource_path: str = "skills") -> UnionSource:
-    """The zero-arg default skill source for a consumer package (REQ-18).
+    """The zero-arg default skill source for a consumer package.
 
     The disjoint union of Root A (the package-data skills under
     ``resource_path``) and Root B (the repo-level skills, wheel-or-checkout).
     A consumer with no Root B present degrades to exactly Root A, unchanged
-    from a bare ``BundledPackageDataSource(package, resource_path)`` (REQ-08).
+    from a bare ``BundledPackageDataSource(package, resource_path)``.
     """
     return UnionSource(
         [
@@ -342,7 +342,7 @@ def default_source(package: str, resource_path: str = "skills") -> UnionSource:
 
 
 def verify_skill_roots(package: str, resource_path: str = "skills") -> None:
-    """Assert a package's two skill roots are disjoint (REQ-13).
+    """Assert a package's two skill roots are disjoint.
 
     Builds the default two-root union and enumerates it: disjoint roots return
     silently; a name present in more than one root raises ``DuplicateSkillError``

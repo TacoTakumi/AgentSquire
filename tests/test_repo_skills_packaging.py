@@ -1,4 +1,4 @@
-"""agentsquire dogfoods the full Root B recipe with an empty .gitkeep (REQ-15).
+"""agentsquire dogfoods the full Root B recipe with an empty .gitkeep.
 
 agentsquire stands up a repo-level skills/ wired as Root B via the same
 force-include stanza it documents for consumers, seeded with a .gitkeep so the

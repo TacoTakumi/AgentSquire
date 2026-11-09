@@ -1,4 +1,4 @@
-"""Two-root union is the zero-arg default; source= overrides it (REQ-18/07/08).
+"""Two-root union is the zero-arg default; source= overrides it.
 
 One default_source(package, resource_path) factory returns
 UnionSource([Root A, Root B]). skills_command_group(package) with no source arg

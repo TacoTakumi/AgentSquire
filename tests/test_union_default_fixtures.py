@@ -1,4 +1,4 @@
-"""Synthetic two-populated-roots fixtures for the real default union (REQ-17).
+"""Synthetic two-populated-roots fixtures for the real default union.
 
 The composed default_source union's disjoint-union behaviour - list, materialize
 from the owning root, and the DuplicateSkillError collision path - is covered
@@ -83,6 +83,6 @@ def test_default_union_collision_across_roots_raises_duplicate(tmp_path, monkeyp
 
 def test_agentsquire_ships_no_throwaway_second_skill():
     # The two-root behaviour is covered by the synthetic fixtures above, so
-    # agentsquire's own shipped set stays a single real skill (REQ-17).
+    # agentsquire's own shipped set stays a single real skill.
     names = [s.name for s in default_source("agentsquire").list_skills()]
     assert names == ["developing-with-agentsquire"]

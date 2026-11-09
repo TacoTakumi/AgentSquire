@@ -124,5 +124,5 @@ def test_real_entry_point_keeps_stdout_stderr_and_exit_code_separate(tmp_path):
 def test_agentsquire_own_skill_roots_are_disjoint():
     # The console now runs check_stale over the two-root union; agentsquire
     # dogfoods the disjointness guard so its own Root A and (empty) Root B can
-    # never collide (REQ-16).
+    # never collide.
     verify_skill_roots("agentsquire")

@@ -1,4 +1,4 @@
-"""The mounted CLI surfaces a DuplicateSkillError as a clean failure (REQ-04).
+"""The mounted CLI surfaces a DuplicateSkillError as a clean failure.
 
 A consumer whose two roots (package-data skills and repo-level _repo_skills)
 both provide the same skill name is a disjoint-or-die packaging mistake. Running

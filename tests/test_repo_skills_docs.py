@@ -1,4 +1,4 @@
-"""Integration docs for repo-level skills, and no build-time coupling (REQ-12/14).
+"""Integration docs for repo-level skills, and no build-time coupling.
 
 The consumer guide must carry the exact one-line force-include stanza mapping the
 repo-root skills dir to <pkg>/_repo_skills, plus a full copyable hatch_build.py

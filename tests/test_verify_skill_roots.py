@@ -1,4 +1,4 @@
-"""Public verify_skill_roots(package) disjointness check (REQ-13).
+"""Public verify_skill_roots(package) disjointness check.
 
 agentsquire ships an importable verify_skill_roots(package) that asserts a
 package's two skill roots are disjoint: silent when disjoint, raising

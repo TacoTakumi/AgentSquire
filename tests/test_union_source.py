@@ -1,4 +1,4 @@
-"""UnionSource: disjoint N-root merge over the SkillSource seam (REQ-01, REQ-02, REQ-05).
+"""UnionSource: disjoint N-root merge over the SkillSource seam.
 
 A UnionSource composes any number of member sources into one, listing the union
 of their skills (each carrying its owning source's content hash) and delegating

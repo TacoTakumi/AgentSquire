@@ -1,9 +1,9 @@
 """Root B resolution: wheel _repo_skills first, else marker-walked repo skills/.
 
 Root B is FirstAvailableSource([BundledPackageDataSource(pkg,'_repo_skills'),
-DirectorySource(<repo>/skills)]) (REQ-10). The editable-checkout <repo> is found
+DirectorySource(<repo>/skills)]). The editable-checkout <repo> is found
 by a marker-walk up from the package's on-disk location to the first directory
-holding both pyproject.toml and a skills/ subdir (REQ-11), robust to src-layout
+holding both pyproject.toml and a skills/ subdir, robust to src-layout
 and flat-layout. A wheel install and an editable checkout must yield the
 identical Root B skill set.
 """

@@ -245,7 +245,7 @@ def _should_prompt(ctx, harnesses, assume_yes=False, no_input=False) -> bool:
 
 class _SkillsGroup(click.Group):
     """A skills command group that surfaces a source's ``DuplicateSkillError``
-    as a clean, named command failure (REQ-04): the collision is caught around
+    as a clean, named command failure: the collision is caught around
     every verb's execution and re-raised as a ``ClickException``, so the user
     sees a human-readable message and a non-zero exit, never a traceback."""
 
@@ -272,10 +272,10 @@ def skills_command_group(
 
     ``package`` is the consumer's importable package carrying skills as
     package data under ``resource_path``; ``default_scope`` is the scope a
-    plain invocation uses (--scope overrides it, REQ-14). The zero-arg default
+    plain invocation uses (--scope overrides it). The zero-arg default
     source is the two-root union of the package-data skills and the repo-level
-    skills (REQ-18); pass a keyword-only ``source`` to use a specific
-    ``SkillSource`` verbatim instead (REQ-07). ``source_package`` and
+    skills; pass a keyword-only ``source`` to use a specific
+    ``SkillSource`` verbatim instead. ``source_package`` and
     ``source_version`` default to the package name and its installed
     distribution (or ``__version__``) and end up in the provenance stamp.
     ``home`` and ``project`` point the group at explicit directories - tests

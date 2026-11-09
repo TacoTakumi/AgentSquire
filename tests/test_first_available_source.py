@@ -1,4 +1,4 @@
-"""FirstAvailableSource: exactly one live branch, wheel-or-checkout (REQ-09).
+"""FirstAvailableSource: exactly one live branch, wheel-or-checkout.
 
 FirstAvailableSource resolves entirely to the first member whose backing root
 exists, and only that member. It is the directory-shaped generalization of the
