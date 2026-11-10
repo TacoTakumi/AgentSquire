@@ -24,6 +24,14 @@ WIRING_TOKENS = [
     "agentsquire.skills",    # entry-point marker
     "provenance",            # provenance/update (staleness) model
     "staleness",
+    # The release check: the command, the startup notice, the direct call.
+    "check_update_command",
+    "notify_update",
+    "check_for_update",
+    # What a consumer's test suite must isolate: the request and the cache.
+    "_fetch_body",
+    "XDG_CACHE_HOME",
+    "AGENTSQUIRE_NO_UPDATE_CHECK",
 ]
 # ...and it must point at the full reference rather than duplicate it.
 DOCS_POINTER_TOKENS = ["squire guide", "docs/"]

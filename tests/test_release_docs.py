@@ -1,7 +1,7 @@
 """The release check is documented, and the README example runs.
 
-README.md, docs/api.md and the newest section of CHANGELOG.md each name the
-five public names of the release check. The API reference states the two
+README.md, docs/api.md and the CHANGELOG.md section of the release that added
+the release check each name its five public names. The API reference states the two
 facts a consumer relies on. The three files are ASCII only. The README
 example is extracted and run against a fake PyPI answer, so it can only
 drift from the working API by failing here.
@@ -35,11 +35,18 @@ NAMES = [
 STATUS_VALUES = ["up-to-date", "update-available", "ahead", "unknown", "check-failed"]
 
 
-def newest_changelog_section() -> str:
-    """The text of the first version section of the changelog."""
+# The release that added the release check. Its changelog section names the
+# public names; a later section has no reason to repeat them.
+RELEASE_CHECK_VERSION = "0.6.0"
+
+
+def release_check_changelog_section() -> str:
+    """The text of the changelog section of the release that added the check."""
     chunks = re.split(r"^## \[", CHANGELOG.read_text(encoding="utf-8"), flags=re.MULTILINE)
-    assert len(chunks) > 1, "the changelog has no version section"
-    return chunks[1]
+    prefix = RELEASE_CHECK_VERSION + "]"
+    section = next((chunk for chunk in chunks[1:] if chunk.startswith(prefix)), None)
+    assert section, f"the changelog has no {RELEASE_CHECK_VERSION} section"
+    return section
 
 
 def api_release_section() -> str:
@@ -74,8 +81,8 @@ def test_api_reference_names_each_public_name(name):
 
 
 @pytest.mark.parametrize("name", NAMES)
-def test_newest_changelog_section_names_each_public_name(name):
-    assert name in newest_changelog_section()
+def test_release_check_changelog_section_names_each_public_name(name):
+    assert name in release_check_changelog_section()
 
 
 @pytest.mark.parametrize("name", NAMES)

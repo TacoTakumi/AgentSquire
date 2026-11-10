@@ -8,6 +8,16 @@ The version is declared in two places that are kept in sync by the release
 tooling: `__version__` in `src/agentsquire/__init__.py` and `version` in
 `pyproject.toml`.
 
+## [0.6.1]
+
+### Changed
+- **The bundled skill `developing-with-agentsquire` covers the release check.**
+  A new point says how a consumer mounts `check-update`, calls `notify_update`
+  and uses `check_for_update` from a doctor command. It names what the first
+  adoption got wrong: a test suite must isolate the request and the cache
+  (`XDG_CACHE_HOME`), the cached notice must stay out of `check-update`, and a
+  doctor command must honour `CI` and `AGENTSQUIRE_NO_UPDATE_CHECK` itself.
+
 ## [0.6.0]
 
 ### Added
